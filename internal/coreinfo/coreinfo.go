@@ -72,8 +72,8 @@ type CoreInfo struct {
 	UnsupportedTransports []string `json:"unsupported_transports"`
 
 	// TransportOverrides maps a transport type name to the core-specific name.
-	// Example for sing-box >= 1.11: "xhttp" -> "splithttp"
-	// Applied by the config adapter, not here.
+	// Currently unused; sing-box does not support xhttp/splithttp at all.
+	// Xray-core uses "splithttp" (pre-v1.8.16) or "xhttp" (v1.8.16+).
 	TransportOverrides map[string]string `json:"transport_overrides,omitempty"`
 
 	// SSOnlyTransports lists the ONLY transports sing-box supports for
@@ -101,7 +101,7 @@ func init() {
 		ConfigFormat:         "json",
 		HasClashAPI:          true,
 		SupportedProtocols:   models.SupportedProtocolsByKind(models.CoreKindSingBox),
-		UnsupportedTransports: []string{"kcp"},
+		UnsupportedTransports: []string{"kcp", "xhttp", "splithttp"},
 		SSOnlyTransports:     []string{"raw", "ws"}, // sing-box SS only supports raw (no transport) and ws
 	}
 

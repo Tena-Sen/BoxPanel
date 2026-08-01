@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"boxpanel/internal/config"
+	"boxpanel/internal/coreinfo"
 	"boxpanel/internal/models"
 	"boxpanel/internal/protocol"
 	"boxpanel/internal/routing"
@@ -265,8 +266,29 @@ func (b *Builder) buildOutbounds(req BuildRequest) ([]map[string]any, error) {
 
 	// 1. 每个 server 一个独立 outbound（tag: srv-<id>）
 	//    供 main selector 和 group 引用，使 Clash API 可在运行时切换。
+	//
+	//    对 sing-box 不支持的 transport type（如 xhttp/splithttp），
+	//    生成 block outbound 而非包含非法 transport 的 outbound，
+	//    避免 sing-box check 报 "unknown transport type" 错误。
 	serverTags := make([]string, 0, len(req.AllServers))
 	for _, srv := range req.AllServers {
+		transport := srv.TransportType
+		if transport == "" || transport == "tcp" || transport == "raw" {
+			transport = "" // no transport
+		}
+		// Check: if this transport type is unsupported by sing-box, emit a block outbound instead
+		if transport != "" && !coreinfo.SupportsTransport(models.CoreKindSingBox, transport) {
+			// sing-box does not support this transport — emit a placeholder block outbound
+			// so the tag is still resolvable (for groups/selectors) but won't cause config errors.
+			ob := map[string]any{
+				"tag":  ServerTag(srv.ID),
+				"type": "block",
+			}
+			outbounds = append(outbounds, ob)
+			serverTags = append(serverTags, ServerTag(srv.ID))
+			continue
+		}
+
 		ob, err := protocol.Outbound(srv)
 		if err != nil {
 			return nil, fmt.Errorf("build outbound for %s: %w", srv.Protocol, err)
@@ -277,12 +299,36 @@ func (b *Builder) buildOutbounds(req BuildRequest) ([]map[string]any, error) {
 	}
 
 	// 2. 主 proxy = selector 包含所有 server，default = 当前选中
+	//    如果当前选中的 server 被 block（transport 不兼容），自动选择第一个兼容的 server
 	if len(serverTags) > 0 {
+		defaultTag := ServerTag(req.CurrentServer.ID)
+		// Check if the current server's outbound is a block (transport-incompatible)
+		currentTransport := req.CurrentServer.TransportType
+		if currentTransport == "" || currentTransport == "tcp" || currentTransport == "raw" {
+			currentTransport = ""
+		}
+		if currentTransport != "" && !coreinfo.SupportsTransport(models.CoreKindSingBox, currentTransport) {
+			// Current server is incompatible — find first compatible server
+			defaultTag = ""
+			for _, srv := range req.AllServers {
+				t := srv.TransportType
+				if t == "" || t == "tcp" || t == "raw" {
+					t = ""
+				}
+				if t == "" || coreinfo.SupportsTransport(models.CoreKindSingBox, t) {
+					defaultTag = ServerTag(srv.ID)
+					break
+				}
+			}
+			if defaultTag == "" {
+				defaultTag = serverTags[0] // fallback: first tag even if all blocked
+			}
+		}
 		proxySel := map[string]any{
 			"type":      "selector",
 			"tag":       "proxy",
 			"outbounds": serverTags,
-			"default":   ServerTag(req.CurrentServer.ID),
+			"default":   defaultTag,
 		}
 		outbounds = append(outbounds, proxySel)
 	} else {
@@ -309,7 +355,14 @@ func (b *Builder) buildOutbounds(req BuildRequest) ([]map[string]any, error) {
 // ServerTag returns the outbound tag for a server ID.
 func ServerTag(serverID string) string { return "srv-" + serverID }
 
-// buildGroupOutbound compiles a group into a sing-box outbound of the same type.
+// buildGroupOutbound compiles a group into a sing-box outbound.
+// Maps Clash-style group types to sing-box outbound types:
+//
+//	Clash          →  sing-box
+//	selector       →  selector
+//	url_test       →  urltest
+//	fallback       →  fallback (1.11-1.12) / urltest (1.13+, fallback removed)
+//	load_balance   →  urltest (sing-box has no load_balance, best-effort fallback)
 func (b *Builder) buildGroupOutbound(g models.Group) map[string]any {
 	var members []string
 	for _, sid := range g.ServerIDs {
@@ -318,8 +371,12 @@ func (b *Builder) buildGroupOutbound(g models.Group) map[string]any {
 	if len(members) == 0 {
 		return nil
 	}
+
+	// Map Clash-style group type → sing-box outbound type
+	singboxType := mapGroupType(g.Type)
+
 	ob := map[string]any{
-		"type":      g.Type,
+		"type":      singboxType,
 		"tag":       GroupTag(g.ID),
 		"outbounds": members,
 	}
@@ -338,6 +395,22 @@ func (b *Builder) buildGroupOutbound(g models.Group) map[string]any {
 		}
 	}
 	return ob
+}
+
+// mapGroupType maps a Clash-style group type to the sing-box outbound type name.
+func mapGroupType(clashType string) string {
+	switch clashType {
+	case models.GroupURLTest:
+		return "urltest" // sing-box uses "urltest" (no underscore)
+	case models.GroupFallback:
+		return "fallback" // sing-box 1.11-1.12; 1.13+ removed, Adapter will handle
+	case models.GroupLoadBalance:
+		return "urltest" // sing-box has no load_balance, fall back to urltest
+	case models.GroupSelector:
+		return "selector"
+	default:
+		return clashType // unknown: pass through (may cause sing-box error, but better than crash)
+	}
 }
 
 // GroupTag returns the outbound tag for a group ID.

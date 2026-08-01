@@ -20,6 +20,10 @@ import (
 	"boxpanel/internal/bootstrap"
 	"boxpanel/internal/config"
 	"boxpanel/internal/core"
+	"boxpanel/internal/core/mihomo"
+	"boxpanel/internal/core/singbox"
+	"boxpanel/internal/core/xray"
+	"boxpanel/internal/core/hysteria2"
 	"boxpanel/internal/core/configgen"
 	"boxpanel/internal/coredl"
 	"boxpanel/internal/models"
@@ -80,12 +84,21 @@ func main() {
 	// 2. 注入服务
 	runner := core.NewRunner(config.ExePath(), config.BaseDir())
 	gen := configgen.New(st)
+
+	// Register all core implementations
+	coreRunner := core.NewRunner(config.ExePath(), config.BaseDir()) // shared runner for CoreManager
+	coreMgr := core.NewManager(coreRunner)
+	coreMgr.Register(singbox.New(gen))
+	coreMgr.Register(xray.New())
+	coreMgr.Register(mihomo.New())
+	coreMgr.Register(hysteria2.New())
+
 	subs := subscription.New(st)
 	sys := sysproxy.New()
 	rsDown := rulesets.New()
 	coreDl := coredl.New()
 	coreCache, _ := coredl.NewCache(coreDl.BinDir())
-	apiSrv := api.New(st, runner, gen, subs, sys, rsDown, coreDl, coreCache, func() {
+	apiSrv := api.New(st, runner, gen, coreMgr, subs, sys, rsDown, coreDl, coreCache, func() {
 		slog.Info("quit requested via API")
 		os.Exit(0)
 	})

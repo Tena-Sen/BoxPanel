@@ -21,8 +21,8 @@ func (s *APIServer) handleQuit(w http.ResponseWriter, r *http.Request) {
 		f.Flush()
 	}
 	go func() {
-		if s.runner.IsRunning() {
-			_ = s.runner.Stop()
+		if s.coreIsRunning() {
+			_ = s.coreStop()
 		}
 		s.persistTraffic()
 		if s.onQuit != nil {
@@ -46,8 +46,8 @@ func (s *APIServer) handleState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, 200, map[string]any{
-		"running":            s.runner.IsRunning(),
-		"pid":                s.runner.PID(),
+		"running":            s.coreIsRunning(),
+		"pid":                s.corePID(),
 		"uptime_seconds":     int(s.runner.Uptime().Seconds()),
 		"version":            config.Version,
 		"base_dir":           config.BaseDir(),

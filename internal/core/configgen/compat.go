@@ -4,7 +4,10 @@
 // 不兼容的字段，确保生成的 JSON 一定能被指定版本的 sing-box 接受。
 package configgen
 
-import "strings"
+import (
+	"log/slog"
+	"strings"
+)
 
 // CompareVersions: a<b return -1, a==b return 0, a>b return 1.
 // 支持 "1.14.0-alpha.1"、"1.10.7"、"1.9.0-rc1" 等格式。
@@ -94,10 +97,45 @@ func (a *Adapter) Apply(cfg map[string]any) {
 		}
 	}
 
-	// Transport type naming: "xhttp" → "splithttp" in sing-box 1.11+
-	// sing-box < 1.11.0 uses "xhttp"; 1.11.0+ uses "splithttp"
+	// Transport type: sing-box 不支持 xhttp/splithttp（Xray-core 独有协议）。
+	// 如果 outbound 中出现 xhttp/splithttp transport，替换为 block outbound
+	// 以避免 sing-box 报 "unknown transport type" 错误。
+	// 这是对 builder.buildOutbounds 的兜底防护——正常情况下 builder 已经处理了，
+	// 但如果配置被手动修改或来自其他来源，这里做最后一道防线。
+	unsupportedTransports := map[string]bool{"xhttp": true, "splithttp": true, "kcp": true}
 	for _, ob := range getOutbounds(cfg) {
-		normalizeTransport(ob, a.version)
+		transport, _ := ob["transport"].(map[string]any)
+		if transport == nil {
+			continue
+		}
+		ttype, _ := transport["type"].(string)
+		if ttype == "" {
+			continue
+		}
+		if unsupportedTransports[ttype] {
+			tag, _ := ob["tag"].(string)
+			slog.Warn("sing-box does not support transport type, replacing with block outbound",
+				"transport", ttype, "tag", tag)
+			// Remove all fields except tag, replace type with block
+			for k := range ob {
+				if k != "tag" {
+					delete(ob, k)
+				}
+			}
+			ob["type"] = "block"
+		}
+	}
+
+	// sing-box 1.13+ removed "fallback" outbound type; map to "urltest"
+	if CompareVersions(a.version, "1.13.0") >= 0 {
+		for _, ob := range getOutbounds(cfg) {
+			t, _ := ob["type"].(string)
+			if t == "fallback" {
+				ob["type"] = "urltest"
+				tag, _ := ob["tag"].(string)
+				slog.Warn("sing-box 1.13+ removed fallback outbound, mapping to urltest", "tag", tag)
+			}
+		}
 	}
 
 	// log.timestamp 1.8+
@@ -112,25 +150,11 @@ func (a *Adapter) Apply(cfg map[string]any) {
 	// DNS final string OK in all versions
 }
 
-// normalizeTransport adjusts the transport type field based on the target sing-box version.
-// 入库时已统一将 splithttp 规范为 xhttp，这里只需按版本决定输出：
-// - sing-box >= 1.11.0: "xhttp" → "splithttp" (sing-box 新版正式名称)
-// - sing-box < 1.11.0: 保持 "xhttp" (旧版名称)
-// - version 未知: 保持 "xhttp" (保守策略, 旧版更常见)
-func normalizeTransport(ob map[string]any, version string) {
-	transport, ok := ob["transport"].(map[string]any)
-	if !ok {
-		return
-	}
-	ttype, _ := transport["type"].(string)
-	if ttype == "" {
-		return
-	}
-	// 只有 xhttp 需要按版本转换
-	if ttype == "xhttp" && version != "" && CompareVersions(version, "1.11.0") >= 0 {
-		transport["type"] = "splithttp"
-	}
-}
+// normalizeTransport is intentionally removed.
+// sing-box does not support xhttp/splithttp at all (Xray-core-only transport).
+// No version-based conversion is needed or valid.
+// The NodeValidator + SupportsTransport system will catch incompatible nodes
+// and route them to the Xray core instead.
 
 func getOutbounds(cfg map[string]any) []map[string]any {
 	obs, _ := cfg["outbounds"].([]map[string]any)

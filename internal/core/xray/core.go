@@ -24,6 +24,8 @@ import (
 // Core implements core.Core for Xray.
 type Core struct {
 	exePath string
+	cmd     *exec.Cmd
+	pid     int
 }
 
 // New creates an Xray Core adapter.
@@ -153,23 +155,34 @@ func (c *Core) BuildConfig(_ context.Context, req core.BuildRequest, outPath str
 func (c *Core) Start(_ context.Context, configPath string) error {
 	killExistingXray()
 
-	cmd := exec.Command(c.exePath, "run", "-c", configPath)
-	cmd.Dir = filepath.Dir(c.exePath)
-	hideWindow(cmd)
+	c.cmd = exec.Command(c.exePath, "run", "-c", configPath)
+	c.cmd.Dir = filepath.Dir(c.exePath)
+	hideWindow(c.cmd)
 
-	if err := cmd.Start(); err != nil {
+	if err := c.cmd.Start(); err != nil {
 		return fmt.Errorf("start xray: %w", err)
 	}
+	c.pid = c.cmd.Process.Pid
+	// Reap process in background to prevent zombie
+	go func() { _ = c.cmd.Wait() }()
 	return nil
 }
 
 func (c *Core) Stop() error {
 	killExistingXray()
+	c.pid = 0
 	return nil
 }
 
-func (c *Core) IsRunning() bool { return false }
-func (c *Core) PID() int        { return 0 }
+func (c *Core) IsRunning() bool {
+	if c.pid <= 0 || c.cmd == nil || c.cmd.Process == nil {
+		return false
+	}
+	// Check if process is still alive
+	return c.cmd.Process.Signal(syscall.Signal(0)) == nil
+}
+
+func (c *Core) PID() int { return c.pid }
 
 func (c *Core) Check(_ context.Context, configPath string) error {
 	cmd := exec.Command(c.exePath, "run", "-c", configPath, "-test")

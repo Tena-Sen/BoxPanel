@@ -116,7 +116,7 @@ func (s *APIServer) handleSelectServer(w http.ResponseWriter, r *http.Request) {
 
 	// Hot-switch: if core is running and Clash API is available, switch proxy
 	// without restart (sing-box/mihomo selector outbound supports this)
-	if s.runner.IsRunning() && s.clash != nil && s.clash.Reachable(r.Context()) {
+	if s.coreIsRunning() && s.clash != nil && s.clash.Reachable(r.Context()) {
 		tag := configgen.ServerTag(id)
 		if err := s.clash.SelectProxy(r.Context(), "proxy", tag); err != nil {
 			// Hot-switch failed (e.g. tag not found) — log but don't fail

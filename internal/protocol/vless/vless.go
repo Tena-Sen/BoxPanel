@@ -164,8 +164,8 @@ func (VLESS) Outbound(srv models.Server) (map[string]any, error) {
 	// transport
 	if srv.TransportType != "" && srv.TransportType != "tcp" {
 		ttype := srv.TransportType
-		// 注：xhttp vs splithttp 的选择由 Adapter.Apply() 根据目标 sing-box 版本动态处理
-		// 这里保留原始值不做转换
+		// 注：xhttp/splithttp 是 Xray-core 独有传输，sing-box 不支持。
+		// 如果使用 sing-box 内核，NodeValidator 会在上游拦截并切换到 Xray。
 		transport := map[string]any{"type": ttype}
 		if srv.TransportPath != "" {
 			transport["path"] = srv.TransportPath

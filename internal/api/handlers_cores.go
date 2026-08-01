@@ -105,8 +105,8 @@ func (s *APIServer) handleDeleteCore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If this is the active core, stop it first (Windows locks running .exe)
-	if st.ActiveCoreID == id && s.runner.IsRunning() {
-		if err := s.runner.Stop(); err != nil {
+	if st.ActiveCoreID == id && s.coreIsRunning() {
+		if err := s.coreStop(); err != nil {
 			slog.Warn("stop core before delete", "err", err)
 		}
 	}

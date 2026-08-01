@@ -7,20 +7,60 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"boxpanel/internal/config"
+	corepkg "boxpanel/internal/core"
 	"boxpanel/internal/core/clashapi"
 	"boxpanel/internal/core/configgen"
+	"boxpanel/internal/coredl"
+	"boxpanel/internal/coreinfo"
 	"boxpanel/internal/models"
 	"boxpanel/internal/nodevalidator"
 	"boxpanel/internal/readyprobe"
 )
 
-func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
+// coreIsRunning returns true if any core (sing-box or other) is running.
+func (s *APIServer) coreIsRunning() bool {
 	if s.runner.IsRunning() {
+		return true
+	}
+	if s.activeCoreImpl != nil && s.activeCoreImpl.IsRunning() {
+		return true
+	}
+	return false
+}
+
+// corePID returns the PID of the running core, or 0.
+func (s *APIServer) corePID() int {
+	if s.runner.IsRunning() {
+		return s.runner.PID()
+	}
+	if s.activeCoreImpl != nil && s.activeCoreImpl.IsRunning() {
+		return s.activeCoreImpl.PID()
+	}
+	return 0
+}
+
+// coreStop stops whatever core is running.
+func (s *APIServer) coreStop() error {
+	if s.runner.IsRunning() {
+		return s.runner.Stop()
+	}
+	if s.activeCoreImpl != nil && s.activeCoreImpl.IsRunning() {
+		err := s.activeCoreImpl.Stop()
+		s.activeCoreImpl = nil
+		s.runningKind = ""
+		return err
+	}
+	return nil
+}
+
+func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
+	if s.coreIsRunning() {
 		writeError(w, 409, "already running")
 		return
 	}
@@ -47,6 +87,20 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 自动补充兼容内核：如果所有已配置内核都不兼容当前节点，
+	// 自动下载兼容的内核（如 xhttp 节点需要 Xray 内核）
+	cores, downloadMsg, err := s.ensureCompatibleCore(cores, srv, st)
+	if err != nil {
+		writeError(w, 500, "自动下载兼容内核失败: "+err.Error())
+		return
+	}
+	// 刷新 settings（ensureCompatibleCore 可能已追加新内核并保存）
+	if downloadMsg != "" {
+		st, _ = s.store.GetSettings(ctx)
+		// 自动下载的内核已在列表末尾，重新排序让兼容内核排在前面
+		cores = candidateCores(st, srv, true)
+	}
+
 	type attempt struct {
 		CoreID   string `json:"core_id"`
 		Version  string `json:"version"`
@@ -70,7 +124,7 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			a.OK = true
 			a.Started = true
-			a.PID = s.runner.PID()
+			a.PID = s.corePID()
 			attempts = append(attempts, a)
 			break
 		}
@@ -108,6 +162,7 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 			"attempts":      attempts,
 			"probe_method":  s.lastProbeMethod,
 			"auto_switched": lastAttempt.CoreID != prevActiveID,
+			"auto_download": downloadMsg,
 		})
 		return
 	}
@@ -181,10 +236,29 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 		coreKind = models.CoreKindSingBox
 	}
 	if vr := nodevalidator.Validate(srv, coreKind); !vr.Valid {
-		return fmt.Errorf("core %s (%s) incompatible: %s", core.Label, coreKind, vr.Errors[0].Message)
+		// Provide actionable suggestion
+		suggestion := vr.Errors[0].Action
+		errMsg := fmt.Sprintf("内核 %s (%s) 不兼容: %s", core.Label, coreKind, vr.Errors[0].Message)
+		if suggestion != "" {
+			errMsg += " — " + suggestion
+		}
+		// If this is a transport issue, check whether user has a compatible core configured
+		if vr.Errors[0].Code == "TRANSPORT_UNSUPPORTED" {
+			hasAltCore := false
+			for _, c := range st.Cores {
+				if c.Kind != coreKind && coreinfo.SupportsTransport(c.Kind, srv.TransportType) {
+					hasAltCore = true
+					break
+				}
+			}
+			if !hasAltCore {
+				errMsg += "（请在设置中下载并添加兼容的内核，如 Xray）"
+			}
+		}
+		return fmt.Errorf(errMsg)
 	}
 
-	// 确保 core.Version 有值（splithttp/xhttp 等版本适配依赖此字段）
+	// 确保 core.Version 有值（版本适配依赖此字段）
 	coreVersion := core.Version
 	if coreVersion == "" {
 		if v, err := probeVersion(core.Path); err == nil {
@@ -192,7 +266,6 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 		}
 	}
 	if coreVersion == "" {
-		// 探测也失败：给保守默认值，避免 Adapter 跳过版本适配
 		coreVersion = "1.10.0"
 		slog.Warn("core version unknown, using conservative default", "path", core.Path)
 	}
@@ -222,28 +295,68 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 	s.settings = st
 	s.mu.Unlock()
 
-	// 切换 runner exe
-	s.runner.SetExePath(core.Path)
+	// ---- 按内核类型分发配置生成 + 校验 + 启动 ----
+	//
+	// sing-box: 使用 configgen.Builder 生成 sing-box JSON，runner.Check/Start
+	// Xray/mihomo/hysteria2: 使用各自的 Core.BuildConfig 生成配置，Core.Check/Start
 
-	target, err := s.gen.Build(configgen.BuildRequest{
-		Profile:       profile,
-		CurrentServer: srv,
-		AllServers:    allServers,
-		Groups:        groups,
-		RoutingRules:  rules,
-		RuleSets:      ruleSets,
-		Settings:      st,
-		CoreVersion:   coreVersion,
-	})
-	if err != nil {
-		return fmt.Errorf("build config: %w", err)
-	}
-	// check 失败视为硬错（不算启动成功）
-	if err := s.runner.Check(target); err != nil {
-		return fmt.Errorf("config check: %w", err)
-	}
-	if err := s.runner.Start(target); err != nil {
-		return fmt.Errorf("start: %w", err)
+	target := config.GeneratedConfigPath()
+
+	switch coreKind {
+	case models.CoreKindSingBox:
+		// sing-box: 使用 Builder 生成 + Runner 管理
+		s.activeCoreImpl = nil
+		s.runningKind = models.CoreKindSingBox
+		s.runner.SetExePath(core.Path)
+		t, err := s.gen.Build(configgen.BuildRequest{
+			Profile:       profile,
+			CurrentServer: srv,
+			AllServers:    allServers,
+			Groups:        groups,
+			RoutingRules:  rules,
+			RuleSets:      ruleSets,
+			Settings:      st,
+			CoreVersion:   coreVersion,
+		})
+		if err != nil {
+			return fmt.Errorf("build config: %w", err)
+		}
+		target = t
+		if err := s.runner.Check(target); err != nil {
+			return fmt.Errorf("config check: %w", err)
+		}
+		if err := s.runner.Start(target); err != nil {
+			return fmt.Errorf("start: %w", err)
+		}
+
+	default:
+		// Xray / mihomo / hysteria2: 使用 CoreManager 分发
+		coreImpl, ok := s.coreMgr.Get(coreKind)
+		if !ok {
+			return fmt.Errorf("core kind %q not registered in CoreManager", coreKind)
+		}
+		coreImpl.SetExePath(core.Path)
+		s.activeCoreImpl = coreImpl
+		s.runningKind = coreKind
+
+		buildReq := corepkg.BuildRequest{
+			Profile:       profile,
+			CurrentServer: srv,
+			AllServers:    allServers,
+			Groups:        groups,
+			RoutingRules:  rules,
+			RuleSets:      ruleSets,
+			Settings:      st,
+		}
+		if err := coreImpl.BuildConfig(ctx, buildReq, target); err != nil {
+			return fmt.Errorf("build %s config: %w", coreKind, err)
+		}
+		if err := coreImpl.Check(ctx, target); err != nil {
+			return fmt.Errorf("config check: %w", err)
+		}
+		if err := coreImpl.Start(ctx, target); err != nil {
+			return fmt.Errorf("start: %w", err)
+		}
 	}
 
 	// 等待内核就绪：优先 SOCKS5 握手探测（借鉴 v2rayN），回退到 Clash API 探测
@@ -287,23 +400,23 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 	}
 
 	// All probes failed — core not ready
-	s.runner.Stop()
+	s.coreStop()
 	return fmt.Errorf("core started but not reachable via SOCKS5/Clash API/TCP (socks5: %s)", socksResult.Error)
 }
 
 func (s *APIServer) handleCoreStop(w http.ResponseWriter, r *http.Request) {
-	if !s.runner.IsRunning() {
+	if !s.coreIsRunning() {
 		writeError(w, 409, "not running")
 		return
 	}
 	s.persistTraffic() // save cumulative traffic before core stops
-	_ = s.runner.Stop()
+	_ = s.coreStop()
 	writeJSON(w, 200, map[string]bool{"stopping": true})
 }
 
 func (s *APIServer) handleCoreRestart(w http.ResponseWriter, r *http.Request) {
 	s.persistTraffic() // save cumulative traffic before core stops
-	_ = s.runner.Stop()
+	_ = s.coreStop()
 	// 重新构建并启动
 	s.handleCoreStart(w, r)
 }
@@ -311,7 +424,7 @@ func (s *APIServer) handleCoreRestart(w http.ResponseWriter, r *http.Request) {
 // ----- Clash API passthrough -----
 
 func (s *APIServer) handleClashProxies(w http.ResponseWriter, r *http.Request) {
-	if !s.runner.IsRunning() {
+	if !s.coreIsRunning() {
 		writeError(w, 503, "内核未运行")
 		return
 	}
@@ -332,7 +445,7 @@ func (s *APIServer) handleClashProxies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *APIServer) handleClashSelect(w http.ResponseWriter, r *http.Request) {
-	if !s.runner.IsRunning() {
+	if !s.coreIsRunning() {
 		writeError(w, 503, "内核未运行，请先启动内核")
 		return
 	}
@@ -357,7 +470,7 @@ func (s *APIServer) handleClashSelect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *APIServer) handleClashConnections(w http.ResponseWriter, r *http.Request) {
-	if !s.runner.IsRunning() {
+	if !s.coreIsRunning() {
 		writeError(w, 503, "内核未运行")
 		return
 	}
@@ -408,4 +521,91 @@ func defaultRuleSets() []models.RuleSet {
 		{ID: "rs_notcn", Tag: "geosite-geolocation-!cn", Type: "local", Format: "binary",
 			Path: "geosite-geolocation-!cn.srs", Enabled: true},
 	}
+}
+
+// ensureCompatibleCore checks whether any of the candidate cores can handle
+// the given server. If not, it automatically downloads a compatible core
+// (e.g. Xray for xhttp/splithttp transport) and appends it to the list.
+//
+// Returns the (possibly extended) cores list, a download message if a core
+// was auto-downloaded, or an error if the download failed.
+func (s *APIServer) ensureCompatibleCore(cores []models.CoreConfig, srv *models.Server, st models.Settings) ([]models.CoreConfig, string, error) {
+	transport := srv.TransportType
+	if transport == "" || transport == "tcp" || transport == "raw" {
+		return cores, "", nil // no transport incompatibility possible
+	}
+
+	// Check if any candidate core supports this transport
+	for _, c := range cores {
+		kind := c.Kind
+		if kind == "" {
+			kind = models.CoreKindSingBox
+		}
+		if coreinfo.SupportsTransport(kind, transport) {
+			return cores, "", nil // already have a compatible core
+		}
+	}
+
+	// All candidates are incompatible — find which core kind supports this transport
+	// and auto-download its latest stable version
+	var requiredKind string
+	for _, kind := range []string{models.CoreKindXray, models.CoreKindMihomo, models.CoreKindHysteria2} {
+		if coreinfo.SupportsTransport(kind, transport) && coreinfo.SupportsProtocol(kind, srv.Protocol) {
+			requiredKind = kind
+			break
+		}
+	}
+	if requiredKind == "" {
+		return cores, "", nil // no core supports this combo, give up (builder will block it)
+	}
+
+	info := coreinfo.GetInfo(requiredKind)
+	slog.Info("no compatible core for transport, auto-downloading",
+		"transport", transport, "required_kind", requiredKind, "core_name", info.Name)
+
+	// Download the latest stable version of the required core
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	coreCfg, err := s.downloadLatestCore(ctx, requiredKind, st)
+	if err != nil {
+		return cores, "", fmt.Errorf("下载 %s 失败: %w", info.Name, err)
+	}
+
+	// Add to settings.Cores and save
+	st.Cores = append(st.Cores, *coreCfg)
+	if err := s.store.SaveSettings(ctx, st); err != nil {
+		return cores, "", fmt.Errorf("保存 %s 配置失败: %w", info.Name, err)
+	}
+	s.mu.Lock()
+	s.settings = st
+	s.mu.Unlock()
+
+	// Append to candidate list
+	cores = append(cores, *coreCfg)
+	msg := fmt.Sprintf("已自动下载 %s %s", info.Name, coreCfg.Version)
+	slog.Info("auto-downloaded compatible core", "kind", requiredKind, "version", coreCfg.Version, "path", coreCfg.Path)
+	return cores, msg, nil
+}
+
+// downloadLatestCore downloads the latest stable version of a core kind.
+func (s *APIServer) downloadLatestCore(ctx context.Context, kind string, st models.Settings) (*models.CoreConfig, error) {
+	// Find latest stable version
+	releases, err := s.multiDl.ListAvailableVersions(ctx, kind, false)
+	if err != nil {
+		return nil, fmt.Errorf("获取 %s 版本列表失败: %w", kind, err)
+	}
+	if len(releases) == 0 {
+		return nil, fmt.Errorf("%s 没有可用版本", kind)
+	}
+	latestVersion := strings.TrimPrefix(releases[0].TagName, "v")
+
+	// Download
+	coreCfg, err := s.multiDl.DownloadCore(ctx, kind, latestVersion, st.CustomDownloadMirrors, func(p coredl.Progress) {
+		slog.Info("downloading core", "kind", kind, "stage", p.Stage, "version", p.Version, "pct", fmt.Sprintf("%.0f%%", p.Pct))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return coreCfg, nil
 }

@@ -318,8 +318,8 @@ func (s *APIServer) handleCacheRemove(w http.ResponseWriter, r *http.Request) {
 	// Check if this version is the active core and running
 	st, _ := s.store.GetSettings(r.Context())
 	for _, c := range st.Cores {
-		if c.Version == version && st.ActiveCoreID == c.ID && s.runner.IsRunning() {
-			if err := s.runner.Stop(); err != nil {
+		if c.Version == version && st.ActiveCoreID == c.ID && s.coreIsRunning() {
+			if err := s.coreStop(); err != nil {
 				slog.Warn("stop core before cache remove", "err", err)
 			}
 			break

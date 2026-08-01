@@ -87,13 +87,7 @@ func Validate(srv models.Server, coreKind string) ValidateResult {
 	}
 
 	// 5. Warnings for known edge cases
-	if coreKind == models.CoreKindSingBox && srv.TransportType == "xhttp" {
-		result.Warnings = append(result.Warnings, ValidationError{
-			Code:    "XHTTP_VERSION_SENSITIVE",
-			Message: "xhttp transport name changed to splithttp in sing-box 1.11+; version adapter will handle this",
-			Action:  "Ensure sing-box version >= 1.11.0 for splithttp support",
-		})
-	}
+	// (xhttp/splithttp 不兼容检测已由 SupportsTransport + UnsupportedTransports 覆盖，无需额外警告)
 
 	// VMess alterId > 0 is deprecated everywhere
 	if srv.Protocol == models.ProtoVMess && srv.AlterID > 0 {

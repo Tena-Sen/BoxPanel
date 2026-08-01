@@ -221,14 +221,12 @@ func minVersionForProtocol(srv models.Server) string {
 }
 
 func minVersionForTransport(t string) string {
-	// 注意：v2rayN/xray 节点 URL 用 ?type=xhttp；sing-box 实际字段名是 splithttp。
-	// 上游解析器应已规范化；这里再做一次防御。
-	if t == "xhttp" {
-		t = "splithttp"
+	// xhttp/splithttp 是 Xray-core 独有协议，sing-box 从未支持。
+	// 返回 "99.99.0" 使版本检查始终 Bad，由 NodeValidator/SupportsTransport 精确拦截。
+	if t == "xhttp" || t == "splithttp" {
+		return "99.99.0"
 	}
 	switch t {
-	case "splithttp":
-		return "1.10.0"
 	case "httpupgrade":
 		return "1.8.0"
 	case "ws", "grpc", "h2":

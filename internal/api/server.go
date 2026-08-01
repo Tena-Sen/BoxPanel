@@ -58,16 +58,21 @@ type APIServer struct {
 
 	// probe method tracking
 	lastProbeMethod string // "socks5" | "clash_api" | "tcp"
+
+	// active core tracking (non-sing-box cores bypass runner)
+	activeCoreImpl core.Core // nil when sing-box is active (uses runner)
+	runningKind    string   // "singbox" | "xray" | "mihomo" | "hysteria2"
 }
 
 // New creates an APIServer wired to all services.
-func New(s store.Store, runner *core.Runner, gen *configgen.Builder,
+func New(s store.Store, runner *core.Runner, gen *configgen.Builder, coreMgr *core.Manager,
 	subs *subscription.Manager, sys sysproxy.Controller, rs *rulesets.Downloader,
 	coredl_ *coredl.Downloader, coreCache_ *coredl.Cache, onQuit func()) *APIServer {
 	srv := &APIServer{
 		store:          s,
 		runner:         runner,
 		gen:            gen,
+		coreMgr:        coreMgr,
 		subs:           subs,
 		sys:            sys,
 		rs:             rs,
@@ -95,7 +100,6 @@ func New(s store.Store, runner *core.Runner, gen *configgen.Builder,
 	})
 	srv.lat = latency.New(srv.clash, st.LatencyTestURL)
 	srv.bw = bandwidth.New(srv.clash, srv.proxyListenAddr(), nil)
-	srv.coreMgr = core.NewManager(runner)
 	srv.multiDl = coredl.NewMultiCoreDownloader()
 	return srv
 }
