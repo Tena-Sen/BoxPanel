@@ -60,6 +60,9 @@ func (VMess) Parse(uri string) (*models.Server, error) {
 	if transport == "http" {
 		transport = "httpupgrade" // sing-box naming
 	}
+	if transport == "splithttp" {
+		transport = "xhttp" // 入库统一规范, 输出时由 Adapter 按版本动态转换
+	}
 	tlsEnabled := v.TLS == "tls" || v.TLS == "reality"
 	name := v.PS
 	if name == "" {

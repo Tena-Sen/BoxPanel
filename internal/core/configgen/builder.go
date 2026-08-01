@@ -166,10 +166,13 @@ func (b *Builder) Build(req BuildRequest) (string, error) {
 	target := config.GeneratedConfigPath()
 	tmp := target + ".tmp"
 
-	// 应用 schema 适配器（按目标 sing-box 版本剔除不兼容字段）
-	if req.CoreVersion != "" {
-		NewAdapter(req.CoreVersion).Apply(cfg)
+	// 应用 schema 适配器（按目标内核版本剔除不兼容字段）
+	// 始终运行：空版本用保守默认值 "1.10.0"（确保 xhttp 不会被误转为 splithttp）
+	coreVersion := req.CoreVersion
+	if coreVersion == "" {
+		coreVersion = "1.10.0" // 保守默认：不转 splithttp，不剥新字段
 	}
+	NewAdapter(coreVersion).Apply(cfg)
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

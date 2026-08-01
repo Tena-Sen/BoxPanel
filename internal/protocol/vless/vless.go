@@ -43,12 +43,14 @@ func (VLESS) Parse(uri string) (*models.Server, error) {
 		return nil, fmt.Errorf("vless link missing port")
 	}
 	q := u.Query()
-	ttype := strings.ToLower(q.Get("type"))
+ ttype := strings.ToLower(q.Get("type"))
 	if ttype == "" {
 		ttype = "tcp"
 	}
-	// 注：v2rayN/xray URL 用 ?type=xhttp；sing-box 用 splithttp。
-	// 但实测当前本地内核都不支持这两个字段，保留原值（xhttp）由用户自行判断兼容。
+	// 入库统一规范: splithttp→xhttp (输出时由 Adapter 按目标内核版本动态转换)
+	if ttype == "splithttp" {
+		ttype = "xhttp"
+	}
 
 	srv := &models.Server{
 		ID:          "",

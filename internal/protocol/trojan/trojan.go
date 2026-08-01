@@ -45,6 +45,9 @@ func (Trojan) Parse(uri string) (*models.Server, error) {
 	if transport == "http" {
 		transport = "httpupgrade"
 	}
+	if transport == "splithttp" {
+		transport = "xhttp" // 入库统一规范, 输出时由 Adapter 按版本动态转换
+	}
 	sni := q.Get("sni")
 	if sni == "" {
 		sni = q.Get("peer")

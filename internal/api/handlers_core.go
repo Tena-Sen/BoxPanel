@@ -191,6 +191,11 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 			coreVersion = v
 		}
 	}
+	if coreVersion == "" {
+		// 探测也失败：给保守默认值，避免 Adapter 跳过版本适配
+		coreVersion = "1.10.0"
+		slog.Warn("core version unknown, using conservative default", "path", core.Path)
+	}
 
 	profile := defaultProfile(st)
 	if st.CurrentProfileID != "" {
