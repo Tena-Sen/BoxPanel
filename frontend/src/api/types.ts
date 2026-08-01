@@ -74,10 +74,42 @@ export interface CompatResult {
   min_version: string
 }
 
+export interface CoreInfo {
+  kind: string
+  name: string
+  candidate_exes: string[]
+  start_args: string[]
+  check_args: string[]
+  version_args: string[]
+  version_re_pattern: string
+  download_url_template: string
+  github_repo: string
+  config_format: string
+  has_clash_api: boolean
+  supported_protocols: string[]
+  unsupported_transports: string[]
+  transport_overrides?: Record<string, string>
+  ss_only_transports?: string[]
+}
+
+export interface ValidationError {
+  code: string
+  message: string
+  action: string
+}
+
+export interface ValidateResult {
+  valid: boolean
+  errors?: ValidationError[]
+  warnings?: ValidationError[]
+}
+
 export interface PreflightResponse {
   current_core: string
   current_core_id: string
   compatibility: CompatResult
+  node_validation?: ValidateResult
+  core_info?: CoreInfo
   recommended_id: string
   recommended_version: string
 }
@@ -102,13 +134,14 @@ export interface AvailableCore {
 }
 
 export interface DownloadProgress {
-  stage: 'starting' | 'fetch_releases' | 'downloading' | 'verifying' | 'extracting' | 'done' | 'error'
+  stage: 'starting' | 'fetch_releases' | 'downloading' | 'verifying' | 'extracting' | 'done' | 'error' | 'resume_downloading' | 'resume_verifying'
   version: string
   bytes_done?: number
   bytes_total?: number
   pct?: number
   source?: string
   error?: string
+  resumed?: boolean
 }
 
 export interface RoutingRule {
@@ -205,6 +238,7 @@ export interface AppState {
   subscription_count: number
   sys_proxy: SysProxyState
   clash_reachable: boolean
+  probe_method?: string  // "socks5" | "clash_api" | "tcp"
 }
 
 export interface Stats {
@@ -224,6 +258,12 @@ export interface CoreKindInfo {
   name: string
   protocols: string[]
   has_clash_api: boolean
+}
+
+export interface CoreKindsResponse {
+  kinds: CoreKindInfo[]
+  core_info: CoreInfo[]
+  active_kind: string
 }
 
 export interface BandwidthResult {

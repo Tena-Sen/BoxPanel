@@ -89,13 +89,14 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 	lastAttempt := attempts[len(attempts)-1]
 	if lastAttempt.OK {
 		writeJSON(w, 200, map[string]any{
-			"started":      true,
-			"pid":          lastAttempt.PID,
-			"core":         lastAttempt.Path,
-			"core_version": lastAttempt.Version,
-			"core_id":      lastAttempt.CoreID,
-			"server":       srv.Name,
-			"attempts":     attempts,
+			"started":       true,
+			"pid":           lastAttempt.PID,
+			"core":          lastAttempt.Path,
+			"core_version":  lastAttempt.Version,
+			"core_id":       lastAttempt.CoreID,
+			"server":        srv.Name,
+			"attempts":      attempts,
+			"probe_method":  s.lastProbeMethod,
 		})
 		return
 	}
@@ -223,6 +224,7 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 			s.refreshClashClient()
 		}
 		slog.Info("core ready (SOCKS5 probe)", "latency", socksResult.Latency)
+		s.lastProbeMethod = "socks5"
 		return nil
 	}
 
@@ -233,6 +235,7 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 			if c.Reachable(ctx) {
 				s.refreshClashClient()
 				slog.Info("core ready (Clash API probe)")
+				s.lastProbeMethod = "clash_api"
 				return nil
 			}
 			time.Sleep(200 * time.Millisecond)
@@ -243,6 +246,7 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 	tcpResult := readyprobe.TCPProbe(mixedAddr)
 	if tcpResult.Ready {
 		slog.Info("core ready (TCP probe, fallback)")
+		s.lastProbeMethod = "tcp"
 		return nil
 	}
 

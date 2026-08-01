@@ -55,6 +55,9 @@ type APIServer struct {
 	sessionDownTotal  int64 // last seen download_total from Clash API this session
 	persistedUpTotal  int64 // cumulative upload from DB (before this session)
 	persistedDownTotal int64 // cumulative download from DB (before this session)
+
+	// probe method tracking
+	lastProbeMethod string // "socks5" | "clash_api" | "tcp"
 }
 
 // New creates an APIServer wired to all services.

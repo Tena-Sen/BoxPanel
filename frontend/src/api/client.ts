@@ -44,7 +44,7 @@ async function request<T = any>(path: string, options: ApiOptions = {}): Promise
   return data as T
 }
 
-import type { AppState, Server, Settings, Subscription, ImportResult, Stats, Group, ClashProxiesResp, RoutingRule, RuleSet, RuleSetStatus, RuleSetRefreshResult, CoreConfig, CoresList, CoreKindInfo, CompatResult, PreflightResponse, StartAttempt, AvailableCore, DownloadProgress, BandwidthResult } from './types'
+import type { AppState, Server, Settings, Subscription, ImportResult, Stats, Group, ClashProxiesResp, RoutingRule, RuleSet, RuleSetStatus, RuleSetRefreshResult, CoreConfig, CoresList, CoreKindInfo, CoreKindsResponse, CompatResult, PreflightResponse, StartAttempt, AvailableCore, DownloadProgress, BandwidthResult } from './types'
 
 export const api = {
   // state
@@ -152,7 +152,7 @@ export const api = {
     }),
 
   // multi-engine core kinds
-  listCoreKinds: () => request<{ kinds: CoreKindInfo[]; active_kind: string }>('/api/cores/kinds'),
+  listCoreKinds: () => request<CoreKindsResponse>('/api/cores/kinds'),
   switchCoreKind: (id: string, kind: string) =>
     request<{ id: string; kind: string }>(`/api/cores/${id}/switch-kind`, { method: 'POST', body: { kind } }),
 

@@ -55,6 +55,17 @@
             <span :class="['compat-chip', 'compat-' + c.level]">{{ c.label }}</span>
           </el-tooltip>
         </div>
+        <!-- NodeValidator 兼容性警告 -->
+        <div v-if="!nodeValidateFor(srv).ok" style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">
+          <el-tooltip
+            v-for="(err, idx) in nodeValidateFor(srv).errors"
+            :key="idx"
+            :content="err"
+            placement="top"
+          >
+            <span class="compat-chip compat-bad">&#x26A0; {{ err }}</span>
+          </el-tooltip>
+        </div>
       </div>
       <!-- 延迟 + 带宽 一行展示 -->
       <div class="test-badges">
@@ -113,18 +124,65 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useServersStore } from '@/stores/servers'
 import { useRuntimeStore } from '@/stores/runtime'
 import LatencyBadge from '@/components/LatencyBadge.vue'
 import BandwidthBadge from '@/components/BandwidthBadge.vue'
-import type { Server, CompatLevel } from '@/api/types'
+import type { Server, CompatLevel, CoreInfo } from '@/api/types'
+import { api } from '@/api/client'
 
 const { t } = useI18n()
 const servers = useServersStore()
 const runtime = useRuntimeStore()
+
+// CoreInfo 校验：判断当前激活内核是否支持该节点的协议/传输
+const coreInfos = ref<CoreInfo[]>([])
+const activeCoreKind = computed(() => {
+  const st = runtime.settings
+  if (!st?.cores || !st.active_core_id) return null
+  const c = st.cores.find(c => c.id === st.active_core_id)
+  return c?.kind || null
+})
+const activeCoreInfo = computed(() => {
+  if (!activeCoreKind.value) return null
+  return coreInfos.value.find(ci => ci.kind === activeCoreKind.value) || null
+})
+
+// 前端轻量 NodeValidator：用 CoreInfo 的 supported_protocols 和 unsupported_transports
+function nodeValidateFor(srv: Server): { ok: boolean; errors: string[] } {
+  const info = activeCoreInfo.value
+  if (!info) return { ok: true, errors: [] }
+  const errors: string[] = []
+  // 协议检查
+  if (info.supported_protocols && info.supported_protocols.length > 0 && !info.supported_protocols.includes(srv.protocol)) {
+    errors.push(`${info.name} 不支持 ${srv.protocol}`)
+  }
+  // 传输检查
+  const t = srv.transport_type
+  if (t && t !== 'tcp' && t !== 'raw' && info.unsupported_transports?.includes(t)) {
+    errors.push(`${info.name} 不支持 ${t} 传输`)
+  }
+  // sing-box SS 传输限制
+  if (info.ss_only_transports && info.ss_only_transports.length > 0 && srv.protocol === 'shadowsocks') {
+    const normalized = (!t || t === 'tcp') ? 'raw' : t
+    if (!info.ss_only_transports.includes(normalized)) {
+      errors.push(`sing-box SS 仅支持 raw/ws 传输`)
+    }
+  }
+  return { ok: errors.length === 0, errors }
+}
+
+async function loadCoreInfos() {
+  try {
+    const r = await api.listCoreKinds()
+    coreInfos.value = r.core_info || []
+  } catch {}
+}
+
+onMounted(() => { loadCoreInfos() })
 
 const showImport = ref(false)
 const importText = ref('')

@@ -82,6 +82,10 @@
               <span v-if="runtime.clashReachable" style="color:var(--green);">可达</span>
               <span v-else class="muted">不可达</span>
             </span>
+            <span v-if="state?.probe_method" class="info-label">探测方式</span>
+            <span v-if="state?.probe_method" class="info-value">
+              <el-tag size="small" :type="probeMethodTagType">{{ probeMethodLabel }}</el-tag>
+            </span>
           </div>
           <el-divider style="margin:12px 0;" />
           <!-- 系统代理 -->
@@ -233,6 +237,20 @@ function kindTagType(kind: string) {
   return (m[kind] || 'info') as any
 }
 
+// 探测方式显示
+const probeMethodLabel = computed(() => {
+  const m = state.value?.probe_method
+  if (!m) return '-'
+  return ({ socks5: 'SOCKS5 握手', clash_api: 'Clash API', tcp: 'TCP 端口' } as any)[m] || m
+})
+const probeMethodTagType = computed(() => {
+  const m = state.value?.probe_method
+  if (m === 'socks5') return 'success'
+  if (m === 'clash_api') return ''
+  if (m === 'tcp') return 'warning'
+  return 'info'
+})
+
 function activeMember(g: any) {
   const tag = groups.nowOf(`grp-${g.id}`)
   if (!tag) return null
@@ -270,6 +288,23 @@ async function onStart() {
   try {
     const pre = await api.preflight()
     const level = pre.compatibility?.level
+
+    // 显示 NodeValidator 校验警告
+    const nv = pre.node_validation
+    if (nv && !nv.valid && nv.errors && nv.errors.length > 0) {
+      const errMsgs = nv.errors.map((e: any) => `• ${e.message}${e.action ? ' → ' + e.action : ''}`).join('\n')
+      try {
+        await ElMessageBox.confirm(
+          `节点与当前内核不兼容：\n${errMsgs}`,
+          '校验失败',
+          { type: 'error', confirmButtonText: '仍要启动', cancelButtonText: '取消' },
+        )
+      } catch { return }
+    } else if (nv && nv.warnings && nv.warnings.length > 0) {
+      const warnMsgs = nv.warnings.map((w: any) => `• ${w.message}`).join('\n')
+      ElMessage({ message: warnMsgs, type: 'warning', duration: 5000 })
+    }
+
     if (level === 'warn' || level === 'bad') {
       const reasons = (pre.compatibility.reasons || []).map((r: any) => `• ${r.message}`).join('\n')
       const hasLocal = !!(pre.recommended_id && pre.recommended_id !== pre.current_core_id)

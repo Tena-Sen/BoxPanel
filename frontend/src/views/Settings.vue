@@ -78,6 +78,21 @@
         </el-table-column>
         <el-table-column prop="label" label="名称" width="160" />
         <el-table-column prop="version" label="版本" width="120" />
+        <el-table-column label="支持协议" min-width="180">
+          <template #default="{ row }">
+            <template v-if="coreInfoByKind(row.kind)">
+              <el-tag v-for="p in coreInfoByKind(row.kind)!.supported_protocols.slice(0, 4)" :key="p" size="small" type="info" style="margin:1px;">{{ p }}</el-tag>
+              <span v-if="coreInfoByKind(row.kind)!.supported_protocols.length > 4" class="muted" style="font-size:11px;"> +{{ coreInfoByKind(row.kind)!.supported_protocols.length - 4 }}</span>
+            </template>
+            <span v-else class="muted">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="Clash API" width="90" align="center">
+          <template #default="{ row }">
+            <span v-if="coreInfoByKind(row.kind)?.has_clash_api" style="color:var(--green);">Yes</span>
+            <span v-else class="muted">No</span>
+          </template>
+        </el-table-column>
         <el-table-column label="路径" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="muted" style="font-family:monospace;font-size:11px;">{{ row.path }}</span>
@@ -177,6 +192,7 @@
         <div style="margin-bottom:8px;font-family:monospace;color:var(--text-mute);font-size:12px;">
           {{ stageText(dlProgress.stage) }}
           <span v-if="dlProgress.source"> · via {{ dlProgress.source }}</span>
+          <el-tag v-if="dlProgress.resumed" size="small" type="warning" style="margin-left:4px;">断点续传</el-tag>
         </div>
         <el-progress
           :percentage="dlProgress.pct || 0"
@@ -201,7 +217,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSettingsStore } from '@/stores/settings'
 import { useRuntimeStore } from '@/stores/runtime'
 import { api } from '@/api/client'
-import type { CoreConfig, CoreKindInfo } from '@/api/types'
+import type { CoreConfig, CoreKindInfo, CoreInfo } from '@/api/types'
 
 const { t, locale } = useI18n()
 const settings = useSettingsStore()
@@ -240,6 +256,7 @@ async function onSave() {
 
 // ----- 内核管理 -----
 const cores = ref<CoreConfig[]>([])
+const coreInfos = ref<CoreInfo[]>([])   // CoreInfo 元数据注册表
 const activeCore = computed(() => cores.value.find((c) => c.id === settings.settings?.active_core_id))
 const showAddCore = ref(false)
 const coreForm = reactive<CoreConfig>({
@@ -252,6 +269,16 @@ async function refreshCores() {
   if (r.active_core_id && settings.settings) {
     settings.settings.active_core_id = r.active_core_id
   }
+  // 同时加载 CoreInfo 注册表
+  try {
+    const kr = await api.listCoreKinds()
+    coreInfos.value = kr.core_info || []
+  } catch {}
+}
+
+// 按 kind 查找 CoreInfo
+function coreInfoByKind(kind: string): CoreInfo | undefined {
+  return coreInfos.value.find(ci => ci.kind === kind)
 }
 
 async function onAddCore() {
@@ -399,7 +426,9 @@ function stageText(stage: string) {
     starting: '准备中...',
     fetch_releases: '获取版本列表',
     downloading: '下载中',
+    resume_downloading: '断点续传中',
     verifying: '校验',
+    resume_verifying: '断点续传校验',
     extracting: '解压',
     done: '完成',
     error: '失败',

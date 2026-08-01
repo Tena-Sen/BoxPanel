@@ -58,6 +58,7 @@ func (s *APIServer) handleState(w http.ResponseWriter, r *http.Request) {
 		"subscription_count": len(subs),
 		"sys_proxy":          s.sys.Get(),
 		"clash_reachable":    s.clashReachable(),
+		"probe_method":       s.lastProbeMethod,
 	})
 }
 
