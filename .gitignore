@@ -27,9 +27,16 @@ config.runtime.json
 .idea/
 .DS_Store
 Thumbs.db
+.claude/
 
 # 环境
 .env.local
 
 # 临时文件
 .temp/
+
+# 本地环境配置
+.env.go
+
+# 规则集二进制（运行时自动下载）
+*.srs
