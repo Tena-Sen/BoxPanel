@@ -1,0 +1,253 @@
+/* BoxPanel 主样式 - 深/浅主题变量 */
+:root {
+  --bg: #1e1e2e;
+  --bg-soft: #181825;
+  --bg-mute: #11111b;
+  --text: #cdd6f4;
+  --text-mute: #a6adc8;
+  --border: #313244;
+  --accent: #89b4fa;
+  --green: #a6e3a1;
+  --red: #f38ba8;
+  --yellow: #f9e2af;
+}
+html.light {
+  --bg: #eff1f5;
+  --bg-soft: #e6e9ef;
+  --bg-mute: #dce0e8;
+  --text: #4c4f69;
+  --text-mute: #7c7f93;
+  --border: #ccd0da;
+  --accent: #1e66f5;
+  --green: #40a02b;
+  --red: #d20f39;
+  --yellow: #df8e1d;
+}
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+a { color: var(--accent); text-decoration: none; }
+.muted { color: var(--text-mute); }
+.flex { display: flex; }
+.spacer { flex: 1; }
+.card {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; margin-bottom: 12px;
+}
+.kbd {
+  background: var(--bg-mute);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+.app-shell {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  grid-template-rows: 56px 1fr;
+  height: 100vh;
+}
+
+/* Mobile / narrow screen: sidebar collapses to icon-only bar */
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 56px 1fr;
+  }
+  .app-sidebar .nav-label {
+    display: none;
+  }
+  .nav-item {
+    justify-content: center;
+    padding: 10px 8px;
+  }
+  .nav-footer {
+    padding-top: 4px;
+  }
+  .app-main {
+    padding: 12px;
+  }
+  .page-title {
+    font-size: 18px;
+  }
+  .toolbar {
+    flex-wrap: wrap;
+  }
+}
+.app-header {
+  grid-column: 1 / 3;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
+.app-brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.app-brand-logo {
+  width: 32px; height: 32px; border-radius: 6px;
+  background: var(--accent); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+}
+.app-status { display: flex; align-items: center; gap: 8px; }
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--text-mute);
+}
+.status-dot.running {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+.app-sidebar {
+  background: var(--bg-soft);
+  border-right: 1px solid var(--border);
+  padding: 12px 8px;
+  display: flex; flex-direction: column;
+}
+.nav-items {
+  flex: 1;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.nav-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.nav-quit {
+  color: var(--red) !important;
+}
+.nav-quit:hover {
+  background: var(--red) !important;
+  color: var(--bg) !important;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 6px;
+  color: var(--text); cursor: pointer;
+  transition: background 0.15s;
+}
+.nav-item:hover { background: var(--bg-mute); }
+.nav-item.active { background: var(--accent); color: var(--bg); font-weight: 600; }
+.app-main { padding: 20px; overflow: auto; }
+.page-title { font-size: 20px; font-weight: 600; margin-bottom: 16px; }
+.latency { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.latency.good { color: var(--green); }
+.latency.med { color: var(--yellow); }
+.latency.bad { color: var(--red); }
+.latency.none { color: var(--text-mute); }
+.log-view {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: var(--bg-mute);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  height: calc(100vh - 200px);
+  overflow: auto;
+}
+.log-line.err { color: var(--red); }
+.log-line.warn { color: var(--yellow); }
+.log-line.dim { color: var(--text-mute); }
+
+/* 内核兼容性徽章 */
+.compat-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-family: ui-monospace, Consolas, monospace;
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--text-mute);
+  background: var(--bg-mute);
+  line-height: 1.4;
+}
+.compat-chip.compat-ok {
+  border-color: var(--green);
+  color: var(--green);
+}
+.compat-chip.compat-warn {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+/* ---- Element Plus dark-mode overrides ---- */
+/* Override EP backgrounds to use our CSS variables */
+.el-table {
+  --el-table-bg-color: var(--bg-soft);
+  --el-table-tr-bg-color: var(--bg-soft);
+  --el-table-header-bg-color: var(--bg-mute);
+  --el-table-row-hover-bg-color: var(--bg-mute);
+  --el-table-border-color: var(--border);
+  --el-table-text-color: var(--text);
+  --el-table-header-text-color: var(--text-mute);
+}
+html.light .el-table {
+  --el-table-bg-color: #eff1f5;
+  --el-table-tr-bg-color: #eff1f5;
+  --el-table-header-bg-color: #e6e9ef;
+  --el-table-row-hover-bg-color: #e6e9ef;
+}
+.el-dialog {
+  --el-dialog-bg-color: var(--bg-soft);
+  --el-dialog-title-font-size: 16px;
+}
+.el-input__wrapper,
+.el-textarea__inner {
+  background-color: var(--bg-mute) !important;
+  box-shadow: 0 0 0 1px var(--border) inset !important;
+  color: var(--text) !important;
+}
+.el-select-dropdown {
+  background-color: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+}
+.el-select-dropdown__item {
+  color: var(--text) !important;
+}
+.el-select-dropdown__item.hover,
+.el-select-dropdown__item:hover {
+  background-color: var(--bg-mute) !important;
+}
+.el-checkbox__label {
+  color: var(--text) !important;
+}
+.el-form-item__label {
+  color: var(--text-mute) !important;
+}
+.el-divider {
+  border-color: var(--border) !important;
+}
+/* Progress bar colors */
+.el-progress-bar__outer {
+  background-color: var(--bg-mute) !important;
+}
+
+/* ---- Mobile responsive utilities ---- */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 12px;
+  }
+  .app-brand > div:not(.app-brand-logo) {
+    font-size: 13px;
+  }
+  .card {
+    padding: 12px;
+  }
+  .el-table {
+    font-size: 13px;
+  }
+}

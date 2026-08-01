@@ -1,0 +1,35 @@
+# 依赖
+node_modules/
+frontend/node_modules/
+
+# 构建产物
+bin/
+internal/web/dist/
+internal/web/dist/*
+
+# Go
+*.exe
+*.exe~
+*.test
+*.out
+
+# 运行时数据（用户私有）
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+config.runtime.json
+.cache.json
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 环境
+.env.local
+
+# 临时文件
+.temp/

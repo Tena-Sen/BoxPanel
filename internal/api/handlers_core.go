@@ -1,0 +1,327 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"boxpanel/internal/compat"
+	"boxpanel/internal/config"
+	"boxpanel/internal/core/clashapi"
+	"boxpanel/internal/core/configgen"
+	"boxpanel/internal/models"
+)
+
+func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
+	if s.runner.IsRunning() {
+		writeError(w, 409, "already running")
+		return
+	}
+	ctx := r.Context()
+	var body struct {
+		AutoFallback bool `json:"auto_fallback"`
+	}
+	_ = readJSON(r, &body)
+	if body.AutoFallback {
+		body.AutoFallback = true // 显式 true
+	}
+
+	st, _ := s.store.GetSettings(ctx)
+	srv, err := s.store.GetServer(ctx, st.CurrentServerID)
+	if err != nil || srv == nil {
+		writeError(w, 400, "未选中服务器")
+		return
+	}
+
+	// 候选内核列表：默认仅 active，auto_fallback=true 时按 SuggestCore 顺序回退
+	cores := candidateCores(st, srv, body.AutoFallback)
+	if len(cores) == 0 {
+		writeError(w, 400, "未配置任何内核")
+		return
+	}
+
+	type attempt struct {
+		CoreID   string `json:"core_id"`
+		Version  string `json:"version"`
+		Path     string `json:"path"`
+		OK       bool   `json:"ok"`
+		Error    string `json:"error,omitempty"`
+		Started  bool   `json:"started,omitempty"`
+		PID      int    `json:"pid,omitempty"`
+		Duration string `json:"duration,omitempty"`
+	}
+
+	var attempts []attempt
+	for i, core := range cores {
+		if i > 0 && !body.AutoFallback {
+			break
+		}
+		a := attempt{CoreID: core.ID, Version: core.Version, Path: core.Path}
+		start := time.Now()
+		err := s.startWithCore(*srv, core, st)
+		a.Duration = time.Since(start).String()
+		if err == nil {
+			a.OK = true
+			a.Started = true
+			a.PID = s.runner.PID()
+			attempts = append(attempts, a)
+			break
+		}
+		a.Error = err.Error()
+		attempts = append(attempts, a)
+		// 切下一个内核（先把 runner exe 路径还原）
+		if !body.AutoFallback {
+			break
+		}
+		if i+1 >= len(cores) || i+1 >= 3 {
+			break
+		}
+	}
+
+	// 聚合结果
+	lastAttempt := attempts[len(attempts)-1]
+	if lastAttempt.OK {
+		writeJSON(w, 200, map[string]any{
+			"started":      true,
+			"pid":          lastAttempt.PID,
+			"core":         lastAttempt.Path,
+			"core_version": lastAttempt.Version,
+			"core_id":      lastAttempt.CoreID,
+			"server":       srv.Name,
+			"attempts":     attempts,
+		})
+		return
+	}
+	writeJSON(w, 500, map[string]any{
+		"error":    lastAttempt.Error,
+		"attempts": attempts,
+	})
+}
+
+// candidateCores returns the cores to try in order.
+// If autoFallback, prepend active then add other cores by SuggestCore priority.
+func candidateCores(st models.Settings, srv *models.Server, autoFallback bool) []models.CoreConfig {
+	if len(st.Cores) == 0 {
+		return nil
+	}
+	// 当前激活
+	var active *models.CoreConfig
+	for i := range st.Cores {
+		if st.Cores[i].ID == st.ActiveCoreID {
+			active = &st.Cores[i]
+			break
+		}
+	}
+	if active == nil {
+		active = &st.Cores[0]
+	}
+	if !autoFallback {
+		return []models.CoreConfig{*active}
+	}
+	// 自动回退：active 优先 + 其余按 SuggestCore 排序
+	out := []models.CoreConfig{*active}
+	seen := map[string]bool{active.ID: true}
+	if suggested := compat.SuggestCore(*srv, st.Cores); suggested != nil && !seen[suggested.ID] {
+		out = append(out, *suggested)
+		seen[suggested.ID] = true
+	}
+	for i := range st.Cores {
+		if seen[st.Cores[i].ID] {
+			continue
+		}
+		out = append(out, st.Cores[i])
+		seen[st.Cores[i].ID] = true
+	}
+	// 最多尝试 3 个
+	if len(out) > 3 {
+		out = out[:3]
+	}
+	return out
+}
+
+// startWithCore 切换 exe 并启动核心。
+func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st models.Settings) error {
+	ctx := context.Background()
+
+	profile := defaultProfile(st)
+	if st.CurrentProfileID != "" {
+		if p, err := s.store.GetProfile(ctx, st.CurrentProfileID); err == nil && p != nil {
+			profile = *p
+		}
+	}
+	groups, _ := s.store.ListGroups(ctx)
+	allServers, _ := s.store.ListServers(ctx)
+	rules, _ := s.store.ListRoutingRules(ctx, "default")
+	ruleSets := defaultRuleSets()
+	if dbSets, _ := s.store.ListRuleSets(ctx); len(dbSets) > 0 {
+		ruleSets = dbSets
+	}
+
+	if st.ClashAPISecret == "" {
+		st.ClashAPISecret = "sbpanel"
+	}
+	if st.ClashAPIPort == 0 {
+		st.ClashAPIPort = config.ClashAPIPort
+	}
+	_ = s.store.SaveSettings(ctx, st)
+	s.mu.Lock()
+	s.settings = st
+	s.mu.Unlock()
+
+	// 切换 runner exe
+	s.runner.SetExePath(core.Path)
+
+	target, err := s.gen.Build(configgen.BuildRequest{
+		Profile:       profile,
+		CurrentServer: srv,
+		AllServers:    allServers,
+		Groups:        groups,
+		RoutingRules:  rules,
+		RuleSets:      ruleSets,
+		Settings:      st,
+		CoreVersion:   core.Version,
+	})
+	if err != nil {
+		return fmt.Errorf("build config: %w", err)
+	}
+	// check 失败视为硬错（不算启动成功）
+	if err := s.runner.Check(target); err != nil {
+		return fmt.Errorf("config check: %w", err)
+	}
+	if err := s.runner.Start(target); err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
+	// 等待 Clash API 可达（最多 3 秒）
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if c := s.clash; c != nil && c.Reachable(ctx) {
+			s.refreshClashClient()
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	// 启动了但 clash 不可达 → 视为失败
+	s.runner.Stop()
+	return fmt.Errorf("core started but Clash API not reachable")
+}
+
+func (s *APIServer) handleCoreStop(w http.ResponseWriter, r *http.Request) {
+	if !s.runner.IsRunning() {
+		writeError(w, 409, "not running")
+		return
+	}
+	_ = s.runner.Stop()
+	writeJSON(w, 200, map[string]bool{"stopping": true})
+}
+
+func (s *APIServer) handleCoreRestart(w http.ResponseWriter, r *http.Request) {
+	_ = s.runner.Stop()
+	// 重新构建并启动
+	s.handleCoreStart(w, r)
+}
+
+// ----- Clash API passthrough -----
+
+func (s *APIServer) handleClashProxies(w http.ResponseWriter, r *http.Request) {
+	if !s.runner.IsRunning() {
+		writeError(w, 503, "内核未运行")
+		return
+	}
+	if s.clash == nil {
+		writeError(w, 503, "Clash API 不可用")
+		return
+	}
+	proxies, err := s.clash.Proxies(r.Context())
+	if err != nil {
+		if errors.Is(err, clashapi.ErrCoreNotRunning) {
+			writeError(w, 503, "内核未运行")
+		} else {
+			writeError(w, 502, err.Error())
+		}
+		return
+	}
+	writeJSON(w, 200, proxies)
+}
+
+func (s *APIServer) handleClashSelect(w http.ResponseWriter, r *http.Request) {
+	if !s.runner.IsRunning() {
+		writeError(w, 503, "内核未运行，请先启动内核")
+		return
+	}
+	if s.clash == nil {
+		writeError(w, 503, "Clash API 不可用")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	_ = readJSON(r, &body)
+	group := chi.URLParam(r, "name")
+	if err := s.clash.SelectProxy(r.Context(), group, body.Name); err != nil {
+		if errors.Is(err, clashapi.ErrCoreNotRunning) {
+			writeError(w, 503, "内核未运行，请先启动内核")
+		} else {
+			writeError(w, 502, err.Error())
+		}
+		return
+	}
+	writeJSON(w, 200, map[string]string{"selected": body.Name, "group": group})
+}
+
+func (s *APIServer) handleClashConnections(w http.ResponseWriter, r *http.Request) {
+	if !s.runner.IsRunning() {
+		writeError(w, 503, "内核未运行")
+		return
+	}
+	if s.clash == nil {
+		writeError(w, 503, "Clash API 不可用")
+		return
+	}
+	conns, err := s.clash.Connections(r.Context())
+	if err != nil {
+		if errors.Is(err, clashapi.ErrCoreNotRunning) {
+			writeError(w, 503, "内核未运行")
+		} else {
+			writeError(w, 502, err.Error())
+		}
+		return
+	}
+	writeJSON(w, 200, conns)
+}
+
+// defaultProfile returns a sensible default profile derived from settings/mode.
+func defaultProfile(st models.Settings) models.Profile {
+	return models.Profile{
+		ID:                    "default",
+		Name:                  "默认",
+		Mode:                  st.Mode,
+		Listen:                "127.0.0.1",
+		ListenPort:            st.ListenPort,
+		Sniff:                 true,
+		TunEnabled:            st.Mode == "ai",
+		TunInterface:          "sing-box-tun",
+		TunAddress:            "172.19.0.1/30",
+		TunStack:              "system",
+		TunMTU:                1500,
+		TunAutoRoute:          true,
+		TunStrictRoute:        true,
+		DirectDNS:             "223.5.5.5",
+		ProxyDNS:              "8.8.8.8",
+		RouteFinal:            "direct",
+		DefaultDomainResolver: "dns-direct",
+	}
+}
+
+// defaultRuleSets returns the built-in CN/geolocation rule-sets.
+func defaultRuleSets() []models.RuleSet {
+	return []models.RuleSet{
+		{ID: "rs_cn", Tag: "geosite-cn", Type: "local", Format: "binary",
+			Path: "geosite-cn.srs", Enabled: true},
+		{ID: "rs_notcn", Tag: "geosite-geolocation-!cn", Type: "local", Format: "binary",
+			Path: "geosite-geolocation-!cn.srs", Enabled: true},
+	}
+}
