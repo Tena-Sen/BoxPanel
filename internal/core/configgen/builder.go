@@ -465,9 +465,14 @@ func (b *Builder) buildRoute(req BuildRequest) (map[string]any, error) {
 		}
 	}
 
+	// route final: 全局模式默认走代理，其余模式默认直连
+	routeFinal := nonEmpty(req.Profile.RouteFinal, "direct")
+	if req.Profile.Mode == "global" {
+		routeFinal = "proxy"
+	}
 	route := map[string]any{
 		"rules": rules,
-		"final": nonEmpty(req.Profile.RouteFinal, "direct"),
+		"final": routeFinal,
 	}
 	if req.Profile.DefaultDomainResolver != "" {
 		route["default_domain_resolver"] = req.Profile.DefaultDomainResolver

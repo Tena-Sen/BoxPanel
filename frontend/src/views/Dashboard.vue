@@ -73,7 +73,7 @@
             </span>
             <span class="info-label">代理模式</span>
             <span class="info-value">
-              <el-tag size="small" :type="modeTagType">{{ modeLabel }}</el-tag>
+              <el-segmented v-model="currentMode" :options="modeOptions" size="small" @change="onModeChange" />
             </span>
             <span class="info-label">混合端口</span>
             <span class="info-value">{{ settings.settings?.listen_port || 20808 }}</span>
@@ -88,7 +88,7 @@
             </span>
           </div>
           <el-divider style="margin:12px 0;" />
-          <!-- 系统代理 -->
+          <!-- 系统代理 / 全局代理 -->
           <div class="info-grid">
             <span class="info-label">系统代理</span>
             <span class="info-value">
@@ -97,6 +97,17 @@
               <el-tag v-else type="warning" size="small">不支持</el-tag>
               <el-button v-if="sysProxy?.supported && !sysProxy?.enabled" link type="primary" size="small" @click="runtime.enableSysProxy()" style="margin-left:6px;">开启</el-button>
               <el-button v-if="sysProxy?.enabled" link type="danger" size="small" @click="runtime.disableSysProxy()" style="margin-left:6px;">关闭</el-button>
+            </span>
+            <span class="info-label">全局代理</span>
+            <span class="info-value">
+              <el-switch
+                :model-value="isGlobalProxy"
+                active-text="开"
+                inactive-text="关"
+                @change="(v: boolean) => v ? onGlobalProxy() : offGlobalProxy()"
+                style="--el-switch-on-color: var(--danger);"
+              />
+              <span class="muted" style="margin-left:6px;font-size:12px;">全局模式 + 系统代理</span>
             </span>
           </div>
         </div>
@@ -182,7 +193,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRuntimeStore } from '@/stores/runtime'
@@ -205,6 +216,49 @@ const sysProxy = computed(() => runtime.state?.sys_proxy)
 const current = computed(() => servers.current || runtime.state?.current_server)
 const autoFallback = ref(true)
 
+// 代理模式切换
+const currentMode = ref('normal')
+const modeOptions = [
+  { label: '规则模式', value: 'normal' },
+  { label: '全局模式', value: 'global' },
+  { label: 'AI 模式', value: 'ai' },
+]
+
+// 同步当前模式
+watch(() => runtime.state?.settings?.mode, (m) => {
+  currentMode.value = m || 'normal'
+}, { immediate: true })
+
+async function onModeChange(mode: string) {
+  await settings.save({ mode } as any)
+  if (runtime.running) {
+    await runtime.restartCore()
+  }
+}
+
+// 全局代理 = 系统代理 + 全局模式 一键开启
+async function onGlobalProxy() {
+  await settings.save({ mode: 'global' } as any)
+  currentMode.value = 'global'
+  if (runtime.running) {
+    await runtime.restartCore()
+  }
+  await runtime.enableSysProxy()
+}
+
+async function offGlobalProxy() {
+  await settings.save({ mode: 'normal' } as any)
+  currentMode.value = 'normal'
+  await runtime.disableSysProxy()
+  if (runtime.running) {
+    await runtime.restartCore()
+  }
+}
+
+const isGlobalProxy = computed(() => {
+  return currentMode.value === 'global' && sysProxy.value?.enabled
+})
+
 // Active core info
 const activeCoreKind = computed(() => {
   const st = settings.settings
@@ -217,15 +271,6 @@ const activeCoreVersion = computed(() => {
   if (!st?.cores || !st.active_core_id) return null
   const c = st.cores.find(c => c.id === st.active_core_id)
   return c?.version || null
-})
-
-const modeLabel = computed(() => {
-  const m = runtime.state?.settings?.mode
-  return ({ normal: '规则模式', ai: 'AI 模式', global: '全局模式' } as any)[m || 'normal'] || '规则模式'
-})
-const modeTagType = computed(() => {
-  const m = runtime.state?.settings?.mode
-  return ({ normal: '', ai: 'warning', global: 'danger' } as any)[m || 'normal'] || ''
 })
 
 function kindLabel(kind: string) {
