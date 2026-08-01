@@ -42,6 +42,10 @@ func main() {
 	flag.Parse()
 
 	slog.Info("starting boxpanel", "version", config.Version, "base_dir", config.BaseDir())
+
+	// 0. 迁移旧数据库文件名 sbpanel.db → boxpanel.db
+	config.MigrateLegacyDB()
+
 	slog.Info("sing-box exe", "path", config.ExePath(),
 		"exists", fileExists(config.ExePath()))
 

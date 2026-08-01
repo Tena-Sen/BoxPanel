@@ -234,4 +234,8 @@ onBeforeUnmount(() => {
   border-color: var(--green);
   background: color-mix(in srgb, var(--green) 8%, var(--bg-mute));
 }
+@media (max-width: 768px) {
+  .toolbar { flex-wrap: wrap; }
+  .member-card { padding: 8px; }
+}
 </style>

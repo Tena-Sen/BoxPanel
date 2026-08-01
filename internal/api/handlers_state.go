@@ -12,8 +12,8 @@ func (s *APIServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true, "version": config.Version})
 }
 
-// POST /api/quit — gracefully shut down sbpanel.
-// Stops the core (if running), then calls the onQuit callback (os.Exit in main).
+// POST /api/quit — gracefully shut down BoxPanel.
+// Stops the core (if running), persists traffic, then calls the onQuit callback (os.Exit in main).
 func (s *APIServer) handleQuit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"quitting": true})
 	// Flush response before exiting
@@ -24,6 +24,7 @@ func (s *APIServer) handleQuit(w http.ResponseWriter, r *http.Request) {
 		if s.runner.IsRunning() {
 			_ = s.runner.Stop()
 		}
+		s.persistTraffic()
 		if s.onQuit != nil {
 			s.onQuit()
 		}

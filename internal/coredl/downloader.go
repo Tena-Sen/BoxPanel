@@ -79,7 +79,7 @@ func (d *Downloader) ListReleases(ctx context.Context, includePrerelease bool) (
 	url := "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=50"
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "sbpanel")
+	req.Header.Set("User-Agent", "boxpanel")
 	resp, err := d.httpCli.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("github api: %w", err)
@@ -262,33 +262,64 @@ func (d *Downloader) DownloadAndCache(ctx context.Context, version string, custo
 }
 
 // downloadFile streams a URL to a file with progress callback.
-// 直接写到 dst（不走 .tmp），避免 Windows 上 AV 实时扫描锁住 .tmp 导致 rename 失败。
+//
+// Supports resume (断点续传): if dst already exists and the server supports
+// Range requests, we append to the existing file instead of starting over.
+// Inspired by v2rayN's bezzad/Downloader approach.
 func (d *Downloader) downloadFile(ctx context.Context, url, dst string, expectedSize int64, onProgress func(int64)) error {
+	// Check for existing partial download
+	var existingSize int64
+	if fi, err := os.Stat(dst); err == nil {
+		existingSize = fi.Size()
+	}
+
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("User-Agent", "sbpanel")
+	req.Header.Set("User-Agent", "boxpanel")
+
+	// If we have a partial file, try to resume
+	if existingSize > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existingSize))
+	}
+
 	resp, err := d.httpCli.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+
+	// Check response: 200 = full download, 206 = partial (resume supported)
+	var f *os.File
+	var done int64
+
+	if resp.StatusCode == http.StatusPartialContent {
+		// Server supports resume: append to existing file
+		f, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+		if err != nil {
+			return err
+		}
+		done = existingSize
+		slog.Info("resuming download", "file", dst, "offset", existingSize, "expected", expectedSize)
+	} else if resp.StatusCode == http.StatusOK {
+		// Server doesn't support resume (or no Range header was sent): overwrite
+		_ = os.Remove(dst)
+		f, err = os.Create(dst)
+		if err != nil {
+			return err
+		}
+		done = 0
+	} else {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	// 先删旧文件（Windows 上覆盖写需要先删）
-	_ = os.Remove(dst)
-	f, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
+
 	success := false
 	defer func() {
 		f.Close()
 		if !success {
-			_ = os.Remove(dst) // 失败清理
+			_ = os.Remove(dst) // failed: clean up
 		}
 	}()
+
 	buf := make([]byte, 32*1024)
-	var done int64
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {

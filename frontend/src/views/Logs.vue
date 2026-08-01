@@ -49,3 +49,9 @@ watch(() => filteredLogs.value.length, async () => {
   if (el) el.scrollTop = el.scrollHeight
 })
 </script>
+
+<style scoped>
+@media (max-width: 768px) {
+  .toolbar { flex-wrap: wrap; gap: 6px; }
+}
+</style>

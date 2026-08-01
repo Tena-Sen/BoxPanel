@@ -13,13 +13,23 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"boxpanel/internal/compat"
+	"boxpanel/internal/coreinfo"
 	"boxpanel/internal/models"
+	"boxpanel/internal/nodevalidator"
 )
 
 var singBoxVersionRe = regexp.MustCompile(`sing-box version (\S+)`)
 var xrayVersionRe = regexp.MustCompile(`Xray (\S+)`)
 var mihomoVersionRe = regexp.MustCompile(`Mihomo\s+(\S+)`)
 var hysteria2VersionRe = regexp.MustCompile(`hysteria2? (\S+)`)
+
+// versionRegexes maps core kind to its version extraction regex (from coreinfo).
+var versionRegexes = map[string]*regexp.Regexp{
+	models.CoreKindSingBox:   coreinfo.Registry[models.CoreKindSingBox].VersionRe,
+	models.CoreKindXray:      coreinfo.Registry[models.CoreKindXray].VersionRe,
+	models.CoreKindMihomo:    coreinfo.Registry[models.CoreKindMihomo].VersionRe,
+	models.CoreKindHysteria2: coreinfo.Registry[models.CoreKindHysteria2].VersionRe,
+}
 
 func (s *APIServer) handleListCores(w http.ResponseWriter, r *http.Request) {
 	st, _ := s.store.GetSettings(r.Context())
@@ -210,24 +220,31 @@ func (s *APIServer) handleTestCore(w http.ResponseWriter, r *http.Request) {
 }
 
 func probeVersion(exePath string) (string, error) {
-	// Try "version" subcommand first (sing-box style)
+	// Detect core kind from path
+	kind := detectKindFromPath(exePath)
+
+	// Try "version" subcommand first
 	cmd := exec.Command(exePath, "version")
 	out, err := cmd.Output()
-	if err == nil {
-		if m := singBoxVersionRe.FindStringSubmatch(string(out)); len(m) >= 2 {
-			return strings.TrimSpace(m[1]), nil
-		}
-		if m := xrayVersionRe.FindStringSubmatch(string(out)); len(m) >= 2 {
-			return strings.TrimSpace(m[1]), nil
-		}
-		if m := mihomoVersionRe.FindStringSubmatch(string(out)); len(m) >= 2 {
-			return strings.TrimSpace(m[1]), nil
-		}
-		if m := hysteria2VersionRe.FindStringSubmatch(string(out)); len(m) >= 2 {
+	raw := strings.TrimSpace(string(out))
+
+	// Use CoreInfo VersionRe for this kind
+	if re, ok := versionRegexes[kind]; ok && err == nil {
+		if m := re.FindStringSubmatch(raw); len(m) >= 2 {
 			return strings.TrimSpace(m[1]), nil
 		}
 	}
-	// Fallback: try "--version" flag (some binaries use this)
+
+	// Fallback: try all known regexes
+	if err == nil {
+		for _, re := range []*regexp.Regexp{singBoxVersionRe, xrayVersionRe, mihomoVersionRe, hysteria2VersionRe} {
+			if m := re.FindStringSubmatch(raw); len(m) >= 2 {
+				return strings.TrimSpace(m[1]), nil
+			}
+		}
+	}
+
+	// Fallback: try "--version" flag
 	cmd = exec.Command(exePath, "--version")
 	out, err = cmd.Output()
 	if err == nil {
@@ -244,8 +261,18 @@ func probeVersion(exePath string) (string, error) {
 }
 
 // detectKindFromPath infers the core kind from the exe filename.
+// Uses CoreInfo CandidateExes registry for more robust matching.
 func detectKindFromPath(path string) string {
 	lower := strings.ToLower(path)
+	// Check against CoreInfo registry first
+	for kind, info := range coreinfo.Registry {
+		for _, exe := range info.CandidateExes {
+			if strings.Contains(lower, strings.ToLower(strings.TrimSuffix(exe, ".exe"))) {
+				return kind
+			}
+		}
+	}
+	// Fallback to simple heuristic
 	switch {
 	case strings.Contains(lower, "xray"):
 		return models.CoreKindXray
@@ -297,16 +324,19 @@ func (s *APIServer) handleCorePreflight(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	res := compat.CheckServer(*srv, active.Version, active.Kind)
+	vr := nodevalidator.Validate(*srv, active.Kind)
 	recommended := compat.SuggestCore(*srv, st.Cores)
 	recommendedID := ""
 	if recommended != nil && recommended.ID != active.ID {
 		recommendedID = recommended.ID
 	}
 	writeJSON(w, 200, map[string]any{
-		"current_core":      active.Version,
-		"current_core_id":   active.ID,
-		"compatibility":     res,
-		"recommended_id":    recommendedID,
+		"current_core":        active.Version,
+		"current_core_id":     active.ID,
+		"compatibility":       res,
+		"node_validation":     vr,
+		"core_info":           coreinfo.GetInfo(active.Kind),
+		"recommended_id":      recommendedID,
 		"recommended_version": func() string { if recommended != nil { return recommended.Version }; return "" }(),
 	})
 }

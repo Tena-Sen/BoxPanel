@@ -7,6 +7,7 @@
       <el-button @click="onRefreshAll">↻ {{ t('subs.refreshAll') }}</el-button>
     </div>
 
+    <div class="table-wrap">
     <el-table :data="subs.subs" stripe>
       <el-table-column prop="name" :label="t('subs.name')" />
       <el-table-column prop="url" :label="t('subs.url')" show-overflow-tooltip>
@@ -34,6 +35,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </div>
 
     <el-dialog v-model="showAdd" :title="t('subs.add')" width="500px">
       <el-form :model="form" label-width="100px">
@@ -100,3 +102,9 @@ async function onDelete(row: Subscription) {
   ElMessage.success('已删除')
 }
 </script>
+
+<style scoped>
+@media (max-width: 768px) {
+  .toolbar { flex-wrap: wrap; }
+}
+</style>

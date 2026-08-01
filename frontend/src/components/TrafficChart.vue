@@ -1,5 +1,5 @@
 <template>
-  <v-chart :option="option" :autoresize="true" style="height: 240px;" />
+  <v-chart :option="option" :autoresize="true" :style="{ height: chartHeight }" />
 </template>
 
 <script setup lang="ts">
@@ -51,25 +51,38 @@ onMounted(() => { timer = setInterval(pushSample, 1000) })
 onBeforeUnmount(() => clearInterval(timer))
 watch(() => [props.upTotal, props.downTotal], pushSample, { deep: false })
 
+// Read CSS variables for theme-aware colors
+function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
+const chartHeight = computed(() => {
+  return window.innerWidth <= 768 ? '180px' : '240px'
+})
+
 const option = computed(() => {
   const xs = samples.value.map((s) => new Date(s.t).toLocaleTimeString())
+  const textColor = cssVar('--text')
+  const borderColor = cssVar('--border')
+  const accentColor = cssVar('--accent')
+  const greenColor = cssVar('--green')
   return {
     backgroundColor: 'transparent',
-    textStyle: { color: '#cdd6f4' },
+    textStyle: { color: textColor },
     grid: { left: 50, right: 20, top: 30, bottom: 30 },
-    legend: { textStyle: { color: '#cdd6f4' }, top: 5 },
+    legend: { textStyle: { color: textColor }, top: 5 },
     tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: xs, axisLine: { lineStyle: { color: '#45475a' } } },
+    xAxis: { type: 'category', data: xs, axisLine: { lineStyle: { color: borderColor } } },
     yAxis: {
-      type: 'value', axisLine: { lineStyle: { color: '#45475a' } },
-      splitLine: { lineStyle: { color: '#313244' } },
+      type: 'value', axisLine: { lineStyle: { color: borderColor } },
+      splitLine: { lineStyle: { color: borderColor, opacity: 0.3 } },
       axisLabel: { formatter: (v: number) => formatBytes(v) + '/s' },
     },
     series: [
       { name: 'Down', type: 'line', smooth: true, showSymbol: false,
-        data: samples.value.map((s) => s.down), lineStyle: { color: '#89b4fa' }, areaStyle: { opacity: 0.2 } },
+        data: samples.value.map((s) => s.down), lineStyle: { color: accentColor }, areaStyle: { opacity: 0.15 } },
       { name: 'Up', type: 'line', smooth: true, showSymbol: false,
-        data: samples.value.map((s) => s.up), lineStyle: { color: '#a6e3a1' }, areaStyle: { opacity: 0.2 } },
+        data: samples.value.map((s) => s.up), lineStyle: { color: greenColor }, areaStyle: { opacity: 0.15 } },
     ],
   }
 })

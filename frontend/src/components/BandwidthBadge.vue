@@ -40,8 +40,8 @@ const tooltipText = computed(() => {
   display: inline-block;
   cursor: default;
 }
-.bandwidth.good { color: #67c23a; }
-.bandwidth.med { color: #e6a23c; }
-.bandwidth.bad { color: #f56c6c; }
+.bandwidth.good { color: var(--green); }
+.bandwidth.med { color: var(--yellow); }
+.bandwidth.bad { color: var(--red); }
 .bandwidth.none { color: var(--text-mute); }
 </style>

@@ -247,6 +247,10 @@ type Settings struct {
 	Cores           []CoreConfig `json:"cores"`            // 已注册内核列表
 	ActiveCoreID    string       `json:"active_core_id"`   // 当前激活的内核 ID
 	CustomDownloadMirrors []string `json:"custom_download_mirrors"` // 用户自定义下载源前缀（如 "https://my-mirror.com/"）
+
+	// 累计流量（跨会话持久化，内核停止时累加当前会话值）
+	TrafficUpTotal   int64 `json:"traffic_up_total"`
+	TrafficDownTotal int64 `json:"traffic_down_total"`
 }
 
 // DefaultSettings returns the initial settings.

@@ -1,4 +1,4 @@
-// Package mihomo adapts mihomo (Clash.Meta) as a proxy backend for sbpanel.
+// Package mihomo adapts mihomo (Clash.Meta) as a proxy backend for BoxPanel.
 //
 // mihomo supports: shadowsocks, vmess, trojan, hysteria2, tuic, http, socks.
 // It has a native Clash API, so full runtime control (group switching, latency

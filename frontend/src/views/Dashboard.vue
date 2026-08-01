@@ -38,7 +38,7 @@
       <div class="stat-card">
         <div class="stat-icon">⬇</div>
         <div class="stat-body">
-          <div class="stat-value">{{ formatBytes(runtime.stats.down_total || 0) }}</div>
+          <div class="stat-value">{{ formatBytes(runtime.stats.cumulative_down_total || 0) }}</div>
           <div class="stat-label">下载总量</div>
         </div>
       </div>
@@ -143,10 +143,11 @@
             >
               <el-tag size="small" :type="typeTag(g.type)">{{ g.name }}</el-tag>
               <span class="muted">›</span>
-              <span v-if="activeMember(g)" style="color:var(--green);font-weight:500;">
+              <span v-if="runtime.running && activeMember(g)" style="color:var(--green);font-weight:500;">
                 ✓ {{ activeMember(g) }}
               </span>
-              <span v-else class="muted" style="font-size:12px;">—</span>
+              <span v-else-if="runtime.running" class="muted" style="font-size:12px;">等待切换</span>
+              <span v-else class="muted" style="font-size:12px;">核心未运行</span>
             </div>
           </template>
         </div>
@@ -160,8 +161,10 @@
         <span class="muted" style="font-size:12px;">
           ↑ {{ formatBytes(runtime.stats.up_bps || 0) }}/s ·
           ↓ {{ formatBytes(runtime.stats.down_bps || 0) }}/s ·
-          总 ↑ {{ formatBytes(runtime.stats.up_total || 0) }} ·
-          总 ↓ {{ formatBytes(runtime.stats.down_total || 0) }}
+          本次 ↑ {{ formatBytes(runtime.stats.up_total || 0) }} ·
+          本次 ↓ {{ formatBytes(runtime.stats.down_total || 0) }} ·
+          累计 ↑ {{ formatBytes(runtime.stats.cumulative_up_total || 0) }} ·
+          累计 ↓ {{ formatBytes(runtime.stats.cumulative_down_total || 0) }}
         </span>
       </div>
       <TrafficChart

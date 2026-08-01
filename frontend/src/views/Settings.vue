@@ -69,6 +69,7 @@
         </el-dropdown>
         <el-button size="small" @click="showAddCore = true">+ 手动添加</el-button>
       </div>
+      <div class="table-wrap">
       <el-table :data="cores" stripe>
         <el-table-column label="类型" width="110">
           <template #default="{ row }">
@@ -91,19 +92,27 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
       <div class="muted" style="font-size:11px;margin-top:8px;">
         支持多内核引擎：sing-box（全协议）/ Xray（vless/vmess/trojan/ss）/ mihomo（ss/vmess/trojan/hy2/tuic）/ Hysteria2（hy2 专用加速）。
         启动核心时使用「当前」内核；configgen 会按内核类型和版本生成对应的配置格式。
       </div>
     </div>
 
-    <div class="card" style="margin-top:16px;">
-      <div style="display:flex;align-items:center;gap:16px;">
-        <span class="muted">{{ t('settings.about') }} · v{{ version }}</span>
-        <span class="muted">Go + Vue 3 + sing-box</span>
-        <div class="spacer"></div>
-        <el-button type="primary" @click="onSave">{{ t('settings.save') }}</el-button>
+    <div class="card about-card" style="margin-top:16px;">
+      <div class="about-brand">
+        <div class="about-logo">BP</div>
+        <div>
+          <div class="about-name">BoxPanel</div>
+          <div class="about-ver">v{{ version }}</div>
+        </div>
       </div>
+      <div class="about-meta">
+        <span class="muted">Go + Vue 3 + Multi-Core</span>
+        <a class="about-link" href="https://github.com/Tena-Sen/BoxPanel" target="_blank" rel="noopener">GitHub</a>
+      </div>
+      <div class="spacer"></div>
+      <el-button type="primary" @click="onSave">{{ t('settings.save') }}</el-button>
     </div>
 
     <!-- 添加内核对话框 -->
@@ -424,3 +433,54 @@ function kindTagType(kind: string) {
   }
 }
 </script>
+
+<style scoped>
+/* About card */
+.about-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.about-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.about-logo {
+  width: 40px; height: 40px; border-radius: 8px;
+  background: var(--accent); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 14px;
+  flex-shrink: 0;
+}
+.about-name {
+  font-weight: 600; font-size: 16px; color: var(--text);
+  line-height: 1.2;
+}
+.about-ver {
+  font-size: 12px; color: var(--text-mute);
+}
+.about-meta {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 13px;
+}
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: border-color 0.15s;
+}
+.about-link:hover {
+  border-color: var(--accent);
+}
+
+@media (max-width: 768px) {
+  :deep(.el-form-item__label) { text-align: left; }
+  .toolbar { flex-wrap: wrap; }
+  .about-card { flex-wrap: wrap; }
+  .about-meta { width: 100%; }
+}
+</style>

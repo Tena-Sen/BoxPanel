@@ -1,4 +1,4 @@
-// Package hysteria2 adapts Hysteria2 as a standalone proxy backend for sbpanel.
+// Package hysteria2 adapts Hysteria2 as a standalone proxy backend for BoxPanel.
 //
 // Hysteria2 only supports the hysteria2 protocol (QUIC-based).
 // It has its own REST API but no Clash API — we expose a no-op ClashAPI.

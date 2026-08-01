@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"boxpanel/internal/core/clashapi"
 	"boxpanel/internal/core/configgen"
 	"boxpanel/internal/models"
+	"boxpanel/internal/nodevalidator"
+	"boxpanel/internal/readyprobe"
 )
 
 func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +150,16 @@ func candidateCores(st models.Settings, srv *models.Server, autoFallback bool) [
 func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st models.Settings) error {
 	ctx := context.Background()
 
+	// --- NodeValidator 前置校验（借鉴 v2rayN） ---
+	// 配置生成前校验协议+传输类型兼容性，避免启动后才报错
+	coreKind := core.Kind
+	if coreKind == "" {
+		coreKind = models.CoreKindSingBox
+	}
+	if vr := nodevalidator.Validate(srv, coreKind); !vr.Valid {
+		return fmt.Errorf("node pre-validation failed: %s", vr.Errors[0].Message)
+	}
+
 	profile := defaultProfile(st)
 	if st.CurrentProfileID != "" {
 		if p, err := s.store.GetProfile(ctx, st.CurrentProfileID); err == nil && p != nil {
@@ -162,7 +175,7 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 	}
 
 	if st.ClashAPISecret == "" {
-		st.ClashAPISecret = "sbpanel"
+		st.ClashAPISecret = "boxpanel"
 	}
 	if st.ClashAPIPort == 0 {
 		st.ClashAPIPort = config.ClashAPIPort
@@ -195,18 +208,47 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 	if err := s.runner.Start(target); err != nil {
 		return fmt.Errorf("start: %w", err)
 	}
-	// 等待 Clash API 可达（最多 3 秒）
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if c := s.clash; c != nil && c.Reachable(ctx) {
-			s.refreshClashClient()
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
+
+	// 等待内核就绪：优先 SOCKS5 握手探测（借鉴 v2rayN），回退到 Clash API 探测
+	mixedAddr := fmt.Sprintf("%s:%d", profile.Listen, profile.ListenPort)
+	if profile.ListenPort == 0 {
+		mixedAddr = fmt.Sprintf("127.0.0.1:%d", config.MixedInboundPort)
 	}
-	// 启动了但 clash 不可达 → 视为失败
+
+	// Strategy 1: SOCKS5 handshake (works for all cores with mixed/socks inbound)
+	socksResult := readyprobe.WaitForReady(ctx, mixedAddr, 4*time.Second)
+	if socksResult.Ready {
+		// SOCKS5 ready — core is fully initialized
+		if c := s.clash; c != nil {
+			s.refreshClashClient()
+		}
+		slog.Info("core ready (SOCKS5 probe)", "latency", socksResult.Latency)
+		return nil
+	}
+
+	// Strategy 2: Clash API reachable (for sing-box / mihomo)
+	if c := s.clash; c != nil {
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			if c.Reachable(ctx) {
+				s.refreshClashClient()
+				slog.Info("core ready (Clash API probe)")
+				return nil
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	// Strategy 3: Fallback TCP port probe
+	tcpResult := readyprobe.TCPProbe(mixedAddr)
+	if tcpResult.Ready {
+		slog.Info("core ready (TCP probe, fallback)")
+		return nil
+	}
+
+	// All probes failed — core not ready
 	s.runner.Stop()
-	return fmt.Errorf("core started but Clash API not reachable")
+	return fmt.Errorf("core started but not reachable via SOCKS5/Clash API/TCP (socks5: %s)", socksResult.Error)
 }
 
 func (s *APIServer) handleCoreStop(w http.ResponseWriter, r *http.Request) {
@@ -214,11 +256,13 @@ func (s *APIServer) handleCoreStop(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "not running")
 		return
 	}
+	s.persistTraffic() // save cumulative traffic before core stops
 	_ = s.runner.Stop()
 	writeJSON(w, 200, map[string]bool{"stopping": true})
 }
 
 func (s *APIServer) handleCoreRestart(w http.ResponseWriter, r *http.Request) {
+	s.persistTraffic() // save cumulative traffic before core stops
 	_ = s.runner.Stop()
 	// 重新构建并启动
 	s.handleCoreStart(w, r)

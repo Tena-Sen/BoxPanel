@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,23 +13,69 @@ import (
 func (s *APIServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	// 实时流量来自 Clash API（运行时）；未运行则返回零值。
 	if s.clash == nil || !s.clashReachable() {
+		s.trafficMu.Lock()
+		cumUp := s.persistedUpTotal
+		cumDown := s.persistedDownTotal
+		s.trafficMu.Unlock()
 		writeJSON(w, 200, map[string]any{
 			"up_bps": 0, "down_bps": 0, "up_total": 0, "down_total": 0, "running": false,
+			"cumulative_up_total": cumUp, "cumulative_down_total": cumDown,
 		})
 		return
 	}
 	conns, err := s.clash.Connections(r.Context())
 	if err != nil {
-		writeJSON(w, 200, map[string]any{"running": false, "error": err.Error()})
+		s.trafficMu.Lock()
+		cumUp := s.persistedUpTotal
+		cumDown := s.persistedDownTotal
+		s.trafficMu.Unlock()
+		writeJSON(w, 200, map[string]any{"running": false, "error": err.Error(),
+			"cumulative_up_total": cumUp, "cumulative_down_total": cumDown})
 		return
 	}
+	sessionUp := conns.UploadTotal
+	sessionDown := conns.DownloadTotal
+
+	// Update in-memory session tracking (detect Clash API counter reset)
+	s.trafficMu.Lock()
+	if sessionUp < s.sessionUpTotal || sessionDown < s.sessionDownTotal {
+		// Clash API counters reset (core restarted internally) → add previous session delta to persisted
+		s.persistedUpTotal += s.sessionUpTotal
+		s.persistedDownTotal += s.sessionDownTotal
+	}
+	s.sessionUpTotal = sessionUp
+	s.sessionDownTotal = sessionDown
+	cumUp := s.persistedUpTotal + sessionUp
+	cumDown := s.persistedDownTotal + sessionDown
+	s.trafficMu.Unlock()
+
 	writeJSON(w, 200, map[string]any{
 		"running":       true,
-		"up_total":      conns.UploadTotal,
-		"down_total":    conns.DownloadTotal,
+		"up_total":      sessionUp,
+		"down_total":    sessionDown,
 		"connections":   len(conns.Connections),
 		"memory":        conns.Memory,
+		"cumulative_up_total":    cumUp,
+		"cumulative_down_total":  cumDown,
 	})
+}
+
+// persistTraffic saves the current cumulative traffic counters to the database.
+// Called when the core stops or BoxPanel quits.
+func (s *APIServer) persistTraffic() {
+	s.trafficMu.Lock()
+	cumUp := s.persistedUpTotal + s.sessionUpTotal
+	cumDown := s.persistedDownTotal + s.sessionDownTotal
+	s.trafficMu.Unlock()
+
+	ctx := context.Background()
+	st, err := s.store.GetSettings(ctx)
+	if err != nil {
+		return
+	}
+	st.TrafficUpTotal = cumUp
+	st.TrafficDownTotal = cumDown
+	_ = s.store.SaveSettings(ctx, st)
 }
 
 // handleLogsSSE streams sing-box log lines to the client via Server-Sent Events.

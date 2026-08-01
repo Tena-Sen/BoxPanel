@@ -1,4 +1,4 @@
-// Package singbox adapts sing-box as a proxy backend for sbpanel.
+// Package singbox adapts sing-box as a proxy backend for BoxPanel.
 //
 // sing-box supports all protocols and has a native Clash API.
 // It is the default and most feature-complete core.

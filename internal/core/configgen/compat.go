@@ -94,8 +94,11 @@ func (a *Adapter) Apply(cfg map[string]any) {
 		}
 	}
 
-	// outbounds[*].transport.mode 在 xhttp/splithttp/httpupgrade 1.11+ 才有
-	// 旧版 transport 字段不通用，但生成时通常不冲突，暂不剔除
+	// Transport type naming: "xhttp" → "splithttp" in sing-box 1.11+
+	// sing-box < 1.11.0 uses "xhttp"; 1.11.0+ uses "splithttp"
+	for _, ob := range getOutbounds(cfg) {
+		normalizeTransport(ob, a.version)
+	}
 
 	// log.timestamp 1.8+
 	if CompareVersions(a.version, "1.8.0") < 0 {
@@ -107,6 +110,32 @@ func (a *Adapter) Apply(cfg map[string]any) {
 	// route.final 默认值差异 - 不需要适配
 
 	// DNS final string OK in all versions
+}
+
+// normalizeTransport adjusts the transport type field based on the target sing-box version.
+// - sing-box >= 1.11.0: "xhttp" → "splithttp" (the canonical name)
+// - sing-box < 1.11.0: "splithttp" → "xhttp" (the old name)
+// - version unknown (""): keep original value (safe default — user's link may use either)
+func normalizeTransport(ob map[string]any, version string) {
+	transport, ok := ob["transport"].(map[string]any)
+	if !ok {
+		return
+	}
+	ttype, _ := transport["type"].(string)
+	if ttype == "" {
+		return
+	}
+	if version == "" {
+		// Unknown version — try "splithttp" first (modern default), let config check fail
+		// if the version is too old, which gives a clear error.
+		// But actually, safer to keep original value from the link.
+		return
+	}
+	if ttype == "xhttp" && CompareVersions(version, "1.11.0") >= 0 {
+		transport["type"] = "splithttp"
+	} else if ttype == "splithttp" && CompareVersions(version, "1.11.0") < 0 {
+		transport["type"] = "xhttp"
+	}
 }
 
 func getOutbounds(cfg map[string]any) []map[string]any {

@@ -215,6 +215,8 @@ export interface Stats {
   down_bps?: number
   connections?: number
   memory?: number
+  cumulative_up_total?: number
+  cumulative_down_total?: number
 }
 
 export interface CoreKindInfo {

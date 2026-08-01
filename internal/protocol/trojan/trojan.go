@@ -105,7 +105,9 @@ func (Trojan) Outbound(srv models.Server) (map[string]any, error) {
 		"password":    srv.Password,
 	}
 	if srv.TransportType != "" && srv.TransportType != "tcp" {
-		transport := map[string]any{"type": srv.TransportType}
+		ttype := srv.TransportType
+		// 注：xhttp vs splithttp 由 Adapter.Apply() 根据版本动态处理
+		transport := map[string]any{"type": ttype}
 		if srv.TransportPath != "" {
 			transport["path"] = srv.TransportPath
 		}

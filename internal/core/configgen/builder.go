@@ -28,6 +28,14 @@ type Builder struct {
 func New(s store.Store) *Builder { return &Builder{store: s} }
 
 // BuildRequest holds the inputs needed to build a runtime config.
+//
+// IMPORTANT: BuildRequest contains reference types (slices, maps) that can be
+// mutated by concurrent goroutines (e.g. user editing servers while Build runs).
+// Callers should either:
+//   - Pass a value copy (BuildRequest is already a value, but slices inside share backing arrays)
+//   - Call Freeze() to deep-copy all slices/maps into an immutable snapshot
+//
+// Inspired by v2rayN's immutable config context (C# record).
 type BuildRequest struct {
 	Profile       models.Profile
 	CurrentServer models.Server   // 当前选中节点（作为 proxy selector 的 default）
@@ -39,9 +47,74 @@ type BuildRequest struct {
 	CoreVersion   string // 目标 sing-box 版本（如 "1.14.0-alpha.1"），空 = 不适配
 }
 
+// Freeze returns a deep-copied snapshot of this BuildRequest that is safe from
+// concurrent modification. The returned BuildRequest shares no backing arrays
+// with the original.
+func (req BuildRequest) Freeze() BuildRequest {
+	// Deep copy slices
+	if req.AllServers != nil {
+		cp := make([]models.Server, len(req.AllServers))
+		copy(cp, req.AllServers)
+		req.AllServers = cp
+	}
+	if req.Groups != nil {
+		cp := make([]models.Group, len(req.Groups))
+		copy(cp, req.Groups)
+		req.Groups = cp
+	}
+	if req.RoutingRules != nil {
+		cp := make([]models.RoutingRule, len(req.RoutingRules))
+		copy(cp, req.RoutingRules)
+		req.RoutingRules = cp
+	}
+	if req.RuleSets != nil {
+		cp := make([]models.RuleSet, len(req.RuleSets))
+		copy(cp, req.RuleSets)
+		req.RuleSets = cp
+	}
+	// Deep copy ServerIDs slices within Groups
+	for i := range req.Groups {
+		if req.Groups[i].ServerIDs != nil {
+			cp := make([]string, len(req.Groups[i].ServerIDs))
+			copy(cp, req.Groups[i].ServerIDs)
+			req.Groups[i].ServerIDs = cp
+		}
+	}
+	// Deep copy Values slices within RoutingRules
+	for i := range req.RoutingRules {
+		if req.RoutingRules[i].Values != nil {
+			cp := make([]string, len(req.RoutingRules[i].Values))
+			copy(cp, req.RoutingRules[i].Values)
+			req.RoutingRules[i].Values = cp
+		}
+	}
+	// Deep copy TLSALPN slices within Servers
+	for i := range req.AllServers {
+		if req.AllServers[i].TLSALPN != nil {
+			cp := make([]string, len(req.AllServers[i].TLSALPN))
+			copy(cp, req.AllServers[i].TLSALPN)
+			req.AllServers[i].TLSALPN = cp
+		}
+		if req.AllServers[i].TransportHeaders != nil {
+			cp := make(map[string]string, len(req.AllServers[i].TransportHeaders))
+			for k, v := range req.AllServers[i].TransportHeaders {
+				cp[k] = v
+			}
+			req.AllServers[i].TransportHeaders = cp
+		}
+	}
+	return req
+}
+
 // Build assembles the full sing-box config and writes it to the runtime path.
 // Returns the path to the generated config.
+//
+// Build freezes the request before use to prevent concurrent modification.
 func (b *Builder) Build(req BuildRequest) (string, error) {
+	// Freeze: create an immutable snapshot to prevent data races
+	// (inspired by v2rayN's immutable config context)
+	req = req.Freeze()
+
 	cfg := map[string]any{}
 
 	// 1. log
@@ -77,7 +150,7 @@ func (b *Builder) Build(req BuildRequest) (string, error) {
 	// 6. experimental.clash_api（枢纽）
 	secret := req.Settings.ClashAPISecret
 	if secret == "" {
-		secret = "sbpanel"
+		secret = "boxpanel"
 	}
 	cfg["experimental"] = map[string]any{
 		"clash_api": map[string]any{
@@ -175,12 +248,9 @@ func (b *Builder) buildInbounds(req BuildRequest) ([]map[string]any, error) {
 		"listen":      nonEmpty(req.Profile.Listen, "127.0.0.1"),
 		"listen_port": orDefault(req.Profile.ListenPort, config.MixedInboundPort),
 	}
-	if req.Profile.Sniff {
-		mixed["sniff"] = true
-		if req.Profile.SniffOverride {
-			mixed["sniff_override_destination"] = true
-		}
-	}
+	// Note: sniff / sniff_override_destination are NOT set on inbound anymore.
+	// Since sing-box 1.11.0 these are route rule actions (sniff / resolve).
+	// They are added in buildRoute() below.
 	inbounds = append(inbounds, mixed)
 	return inbounds, nil
 }
@@ -274,6 +344,20 @@ func GroupTag(groupID string) string { return "grp-" + groupID }
 
 func (b *Builder) buildRoute(req BuildRequest) (map[string]any, error) {
 	rules := []map[string]any{}
+
+	// Sniff + DNS hijack (sing-box 1.11+ rule actions, replacing legacy inbound sniff fields)
+	if req.Profile.Sniff {
+		sniffAction := map[string]any{"action": "sniff"}
+		if req.Profile.SniffOverride {
+			sniffAction["override_destination"] = true
+		}
+		rules = append(rules, sniffAction)
+		// hijack-dns replaces the old outbound type: dns
+		rules = append(rules, map[string]any{
+			"protocol": "dns",
+			"action":   "hijack-dns",
+		})
+	}
 
 	// 私网直连
 	rules = append(rules, map[string]any{"ip_is_private": true, "outbound": "direct"})

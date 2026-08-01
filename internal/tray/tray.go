@@ -5,13 +5,21 @@
 package tray
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"os/exec"
 	"runtime"
 
 	"github.com/getlantern/systray"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 )
 
 // Config 托盘配置
@@ -95,23 +103,52 @@ func OpenBrowserByOS(url string) error {
 	return cmd.Start()
 }
 
-// getIcon returns a tiny embedded icon (16x16 black square PNG).
-// 真实项目应该用 .ico 文件；这里用最小占位图标让 systray 不报错。
+// getIcon returns a 32x32 BoxPanel icon (blue rounded square + "BP" text).
 func getIcon() []byte {
-	// 16x16 黑色 PNG（最简）
-	return []byte{
-		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG header
-		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR
-		0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x10, // 16x16
-		0x08, 0x00, 0x00, 0x00, 0x00, 0x3B, 0x7E, 0x9B, 0x55, // bit depth
-		0x00, 0x00, 0x00, 0x1A, 0x49, 0x44, 0x41, 0x54, // IDAT
-		0x78, 0x9C, 0xED, 0xC1, 0x01, 0x0D, 0x00, 0x00,
-		0xC0, 0xA0, 0xFF, 0xC0, 0x40, 0x04, 0x1B, 0x30,
-		0x06, 0xE3, 0x60, 0x00, 0x00, 0x00, 0x00, 0xC0,
-		0xA0, 0x0F, 0x00, 0x00, 0x5B, 0x07, 0x5F, 0x6D,
-		0x9F, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
-		0x44, 0xAE, 0x42, 0x60, 0x82, // IEND
+	const sz = 32
+	m := image.NewRGBA(image.Rect(0, 0, sz, sz))
+
+	// Background: transparent
+	draw.Draw(m, m.Bounds(), image.Transparent, image.Point{}, draw.Src)
+
+	// Accent blue rounded square
+	accent := color.RGBA{0x89, 0xb4, 0xfa, 0xff}
+	pad := 2
+	for y := pad; y < sz-pad; y++ {
+		for x := pad; x < sz-pad; x++ {
+			// Simple rounded corners
+			dx, dy := 0, 0
+			if x < pad+4 {
+				dx = pad + 4 - x
+			} else if x > sz-pad-5 {
+				dx = x - (sz - pad - 5)
+			}
+			if y < pad+4 {
+				dy = pad + 4 - y
+			} else if y > sz-pad-5 {
+				dy = y - (sz - pad - 5)
+			}
+			if dx*dx+dy*dy <= 4*4 {
+				m.Set(x, y, accent)
+			} else if dx == 0 && dy == 0 {
+				m.Set(x, y, accent)
+			}
+		}
 	}
+
+	// Draw "BP" text in dark color
+	face := basicfont.Face7x13
+	d := font.Drawer{
+		Dst:  m,
+		Src:  &image.Uniform{color.RGBA{0x1e, 0x1e, 0x2e, 0xff}},
+		Face: face,
+		Dot:  fixed.Point26_6{X: fixed.I(8), Y: fixed.I(21)},
+	}
+	d.DrawString("BP")
+
+	var buf bytes.Buffer
+	png.Encode(&buf, m)
+	return buf.Bytes()
 }
 
 // 确保 http 包被引用（占位）

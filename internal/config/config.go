@@ -1,7 +1,7 @@
 // Package config holds application-wide constants, path resolution and defaults.
 //
 // 路径自动定位 sing-box 所在目录（与旧 Python 版一致），
-// 数据目录用 %APPDATA%/sbpanel（跨平台用 user config dir）。
+// 数据目录用 <BaseDir>/data（portable 模式，所有数据随项目走）。
 package config
 
 import (
@@ -90,7 +90,25 @@ func DataDir() string {
 }
 
 // DBPath returns the SQLite database file path.
-func DBPath() string { return filepath.Join(DataDir(), "sbpanel.db") }
+func DBPath() string { return filepath.Join(DataDir(), "boxpanel.db") }
+
+// MigrateLegacyDB renames the old sbpanel.db to boxpanel.db if the new name
+// does not exist yet. This is a one-time migration on first run after rename.
+func MigrateLegacyDB() {
+	newPath := DBPath()
+	oldPath := filepath.Join(DataDir(), "sbpanel.db")
+	if _, err := os.Stat(newPath); err == nil {
+		return // new db already exists
+	}
+	if _, err := os.Stat(oldPath); err != nil {
+		return // old db not found, nothing to migrate
+	}
+	_ = os.Rename(oldPath, newPath)
+	// Also rename WAL/SHM if they exist
+	for _, suffix := range []string{"-shm", "-wal"} {
+		_ = os.Rename(oldPath+suffix, newPath+suffix)
+	}
+}
 
 // GeneratedConfigPath returns the path for the active generated sing-box config.
 func GeneratedConfigPath() string { return filepath.Join(DataDir(), "config.runtime.json") }

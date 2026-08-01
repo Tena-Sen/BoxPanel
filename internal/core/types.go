@@ -6,7 +6,7 @@
 // 关键概念：
 //   - Core：一个可执行代理核心（sing-box.exe / xray.exe）
 //   - ClashAPI：核心暴露的"控制面"（sing-box 有，xray 无）
-//   - BuildRequest：sbpanel 内部的统一"要启动什么节点"的描述
+//   - BuildRequest：BoxPanel 内部的统一"要启动什么节点"的描述
 //   - 每个 Core 负责：把 BuildRequest 翻译成自己的 config schema + 启动子进程
 package core
 
@@ -59,7 +59,7 @@ type ClashAPI interface {
 	Reachable(ctx context.Context) bool
 }
 
-// BuildRequest 是 sbpanel 内部"要启动什么"的统一描述。
+// BuildRequest 是 BoxPanel 内部"要启动什么"的统一描述。
 // 每个 Core 负责把它翻译成自己的 config schema。
 type BuildRequest struct {
 	Profile       models.Profile

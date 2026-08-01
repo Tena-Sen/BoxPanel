@@ -17,27 +17,30 @@
       </div>
     </div>
 
-    <div
-      v-for="(r, idx) in routing.rules"
-      :key="r.id"
-      class="card"
-      style="margin-bottom:8px;display:flex;align-items:center;gap:10px;"
-    >
-      <div class="muted" style="width:28px;text-align:center;font-family:monospace;">{{ idx + 1 }}</div>
-      <el-tag :type="typeTag(r.type)" size="small">{{ typeLabel(r.type) }}</el-tag>
-      <div style="flex:1;min-width:0;">
-        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:13px;">
-          {{ r.values.join(', ') }}
-        </div>
-        <div class="muted" style="font-size:11px;">
-          <span v-if="r.invert">非匹配 · </span>{{ r.outbound }}
+      <div
+        v-for="(r, idx) in routing.rules"
+        :key="r.id"
+        class="card rule-card"
+      >
+        <div class="rule-card-row">
+          <div class="muted" style="width:28px;text-align:center;font-family:monospace;">{{ idx + 1 }}</div>
+          <el-tag :type="typeTag(r.type)" size="small">{{ typeLabel(r.type) }}</el-tag>
+          <div style="flex:1;min-width:0;">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:13px;">
+              {{ r.values.join(', ') }}
+            </div>
+            <div class="muted" style="font-size:11px;">
+              <span v-if="r.invert">非匹配 · </span>{{ r.outbound }}
+            </div>
+          </div>
+          <div class="rule-card-actions">
+            <el-button size="small" :disabled="idx === 0" @click="routing.moveRule(r.id, 'up')">↑</el-button>
+            <el-button size="small" :disabled="idx === routing.rules.length - 1" @click="routing.moveRule(r.id, 'down')">↓</el-button>
+            <el-button size="small" @click="onEditRule(r)">✎</el-button>
+            <el-button size="small" type="danger" @click="onDeleteRule(r)">✕</el-button>
+          </div>
         </div>
       </div>
-      <el-button size="small" :disabled="idx === 0" @click="routing.moveRule(r.id, 'up')">↑</el-button>
-      <el-button size="small" :disabled="idx === routing.rules.length - 1" @click="routing.moveRule(r.id, 'down')">↓</el-button>
-      <el-button size="small" @click="onEditRule(r)">✎</el-button>
-      <el-button size="small" type="danger" @click="onDeleteRule(r)">✕</el-button>
-    </div>
 
     <!-- 规则集 -->
     <div class="toolbar" style="margin-top:24px;">
@@ -47,6 +50,7 @@
       <el-button size="small" @click="onAddCustom">+ 自定义 URL</el-button>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
+      <div class="table-wrap">
       <el-table :data="statusRows" stripe>
         <el-table-column prop="tag" label="Tag" width="220" />
         <el-table-column prop="type" label="类型" width="100" />
@@ -84,6 +88,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </div>
 
     <div class="muted" style="margin-top:12px;font-size:12px;">
@@ -380,3 +385,32 @@ onMounted(async () => {
   await refreshStatus()
 })
 </script>
+
+<style scoped>
+.rule-card {
+  margin-bottom: 8px;
+}
+.rule-card-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rule-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+@media (max-width: 768px) {
+  .toolbar { flex-wrap: wrap; }
+  .rule-card-row {
+    flex-wrap: wrap;
+  }
+  .rule-card-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 6px;
+    gap: 4px;
+  }
+}
+</style>

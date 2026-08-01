@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"boxpanel/internal/coreinfo"
 	"boxpanel/internal/models"
 )
 
@@ -14,8 +15,10 @@ func (s *APIServer) handleListCoreKinds(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 200, map[string]any{"kinds": []any{}})
 		return
 	}
+	// Merge CoreMgr KindInfo with CoreInfo metadata
 	writeJSON(w, 200, map[string]any{
 		"kinds":       s.coreMgr.KindInfo(),
+		"core_info":   coreinfo.AllInfo(),
 		"active_kind": s.coreMgr.ActiveKind(),
 	})
 }

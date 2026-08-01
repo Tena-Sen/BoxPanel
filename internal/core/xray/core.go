@@ -1,4 +1,4 @@
-// Package xray adapts Xray-core as a proxy backend for sbpanel.
+// Package xray adapts Xray-core as a proxy backend for BoxPanel.
 //
 // Xray supports: vless, vmess, trojan, shadowsocks, http, socks.
 // It does NOT have a Clash API; we expose a no-op ClashAPI.

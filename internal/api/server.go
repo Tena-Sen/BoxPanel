@@ -48,6 +48,13 @@ type APIServer struct {
 	logBroadcaster *LogBroadcaster
 	settings      models.Settings
 	onQuit        func() // called by POST /api/quit
+
+	// traffic cumulative tracking (in-memory)
+	trafficMu         sync.Mutex
+	sessionUpTotal    int64 // last seen upload_total from Clash API this session
+	sessionDownTotal  int64 // last seen download_total from Clash API this session
+	persistedUpTotal  int64 // cumulative upload from DB (before this session)
+	persistedDownTotal int64 // cumulative download from DB (before this session)
 }
 
 // New creates an APIServer wired to all services.
@@ -70,6 +77,9 @@ func New(s store.Store, runner *core.Runner, gen *configgen.Builder,
 	ctx := context.Background()
 	st, _ := s.GetSettings(ctx)
 	srv.settings = st
+	// load persisted cumulative traffic
+	srv.persistedUpTotal = st.TrafficUpTotal
+	srv.persistedDownTotal = st.TrafficDownTotal
 	// wire clash client (initially nil; refreshed on core start)
 	srv.refreshClashClient()
 	// runner log -> broadcaster
@@ -208,7 +218,7 @@ func (s *APIServer) Router() http.Handler {
 	// import file
 	r.Post("/api/import/file", s.handleImportFile)
 
-	// quit sbpanel
+	// quit BoxPanel
 	r.Post("/api/quit", s.handleQuit)
 
 	return r

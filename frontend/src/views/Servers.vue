@@ -11,13 +11,13 @@
         v-model="searchQuery"
         placeholder="搜索节点名/地址/协议..."
         clearable
-        style="width:220px;margin-right:8px;"
+        class="search-input"
         size="default"
       >
         <template #prefix>🔍</template>
       </el-input>
       <!-- 协议筛选 -->
-      <el-select v-model="protocolFilter" placeholder="全部协议" clearable size="default" style="width:130px;">
+      <el-select v-model="protocolFilter" placeholder="全部协议" clearable size="default" class="proto-filter">
         <el-option v-for="p in protocols" :key="p" :label="p" :value="p" />
       </el-select>
       <span class="muted" style="margin-left:8px;">{{ filteredServers.length }} / {{ servers.servers.length }}</span>
@@ -278,6 +278,13 @@ async function onSaveEdit() {
   min-width: 120px;
   justify-content: flex-end;
 }
+.search-input {
+  width: 220px;
+  margin-right: 8px;
+}
+.proto-filter {
+  width: 130px;
+}
 @media (max-width: 768px) {
   .server-card {
     flex-wrap: wrap !important;
@@ -286,6 +293,14 @@ async function onSaveEdit() {
     min-width: unset;
     width: 100%;
     justify-content: flex-start;
+  }
+  .search-input {
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 4px;
+  }
+  .proto-filter {
+    width: 100%;
   }
 }
 </style>
