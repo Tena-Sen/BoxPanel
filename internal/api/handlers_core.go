@@ -176,15 +176,20 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 	ctx := context.Background()
 
 	// --- NodeValidator 前置校验（借鉴 v2rayN：排序而非硬拦截） ---
-	// 配置生成前校验协议+传输类型兼容性
-	// 注意：硬不兼容的内核已在 candidateCores 排序时排到后面，
-	// 到这里的应该是兼容的内核。但仍做一次防御性检查，返回 error 让回退机制跳过。
 	coreKind := core.Kind
 	if coreKind == "" {
 		coreKind = models.CoreKindSingBox
 	}
 	if vr := nodevalidator.Validate(srv, coreKind); !vr.Valid {
 		return fmt.Errorf("core %s (%s) incompatible: %s", core.Label, coreKind, vr.Errors[0].Message)
+	}
+
+	// 确保 core.Version 有值（splithttp/xhttp 等版本适配依赖此字段）
+	coreVersion := core.Version
+	if coreVersion == "" {
+		if v, err := probeVersion(core.Path); err == nil {
+			coreVersion = v
+		}
 	}
 
 	profile := defaultProfile(st)
@@ -223,7 +228,7 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 		RoutingRules:  rules,
 		RuleSets:      ruleSets,
 		Settings:      st,
-		CoreVersion:   core.Version,
+		CoreVersion:   coreVersion,
 	})
 	if err != nil {
 		return fmt.Errorf("build config: %w", err)

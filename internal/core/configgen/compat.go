@@ -115,7 +115,7 @@ func (a *Adapter) Apply(cfg map[string]any) {
 // normalizeTransport adjusts the transport type field based on the target sing-box version.
 // - sing-box >= 1.11.0: "xhttp" → "splithttp" (the canonical name)
 // - sing-box < 1.11.0: "splithttp" → "xhttp" (the old name)
-// - version unknown (""): keep original value (safe default — user's link may use either)
+// - version unknown (""): "splithttp" → "xhttp" (保守策略，旧版更常见)
 func normalizeTransport(ob map[string]any, version string) {
 	transport, ok := ob["transport"].(map[string]any)
 	if !ok {
@@ -125,12 +125,15 @@ func normalizeTransport(ob map[string]any, version string) {
 	if ttype == "" {
 		return
 	}
+
+	// Unknown version: 保守策略，xhttp 是更通用的名字
 	if version == "" {
-		// Unknown version — try "splithttp" first (modern default), let config check fail
-		// if the version is too old, which gives a clear error.
-		// But actually, safer to keep original value from the link.
+		if ttype == "splithttp" {
+			transport["type"] = "xhttp"
+		}
 		return
 	}
+
 	if ttype == "xhttp" && CompareVersions(version, "1.11.0") >= 0 {
 		transport["type"] = "splithttp"
 	} else if ttype == "splithttp" && CompareVersions(version, "1.11.0") < 0 {
