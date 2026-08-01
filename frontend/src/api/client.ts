@@ -108,7 +108,7 @@ export const api = {
 
   // core
   startCore: (opts?: { auto_fallback?: boolean }) =>
-    request<{ started: boolean; pid: number; server: string; core: string; core_version: string; attempts?: StartAttempt[] }>('/api/core/start', { method: 'POST', body: opts || {} }),
+    request<{ started: boolean; pid: number; server: string; core: string; core_version: string; core_id: string; attempts?: StartAttempt[]; probe_method?: string; auto_switched?: boolean }>('/api/core/start', { method: 'POST', body: opts || {} }),
   stopCore: () => request<{ stopping: boolean }>('/api/core/stop', { method: 'POST' }),
   restartCore: () => request<any>('/api/core/restart', { method: 'POST' }),
   preflight: () => request<PreflightResponse>('/api/core/preflight'),

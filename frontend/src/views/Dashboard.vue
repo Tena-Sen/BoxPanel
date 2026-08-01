@@ -289,17 +289,17 @@ async function onStart() {
     const pre = await api.preflight()
     const level = pre.compatibility?.level
 
-    // 显示 NodeValidator 校验警告
+    // NodeValidator 校验结果：不兼容时提示用户将自动切换（而非硬阻止）
     const nv = pre.node_validation
     if (nv && !nv.valid && nv.errors && nv.errors.length > 0) {
-      const errMsgs = nv.errors.map((e: any) => `• ${e.message}${e.action ? ' → ' + e.action : ''}`).join('\n')
-      try {
-        await ElMessageBox.confirm(
-          `节点与当前内核不兼容：\n${errMsgs}`,
-          '校验失败',
-          { type: 'error', confirmButtonText: '仍要启动', cancelButtonText: '取消' },
-        )
-      } catch { return }
+      const errMsgs = nv.errors.map((e: any) => `• ${e.message}`).join('\n')
+      const bestCore = pre.core_info?.name || '其他内核'
+      // v2rayN 路线：自动选内核，只做提示
+      ElMessage({
+        message: `当前内核不支持此节点协议，将自动切换兼容内核：\n${errMsgs}\n→ 推荐使用 ${bestCore}`,
+        type: 'warning',
+        duration: 5000,
+      })
     } else if (nv && nv.warnings && nv.warnings.length > 0) {
       const warnMsgs = nv.warnings.map((w: any) => `• ${w.message}`).join('\n')
       ElMessage({ message: warnMsgs, type: 'warning', duration: 5000 })
@@ -308,44 +308,41 @@ async function onStart() {
     if (level === 'warn' || level === 'bad') {
       const reasons = (pre.compatibility.reasons || []).map((r: any) => `• ${r.message}`).join('\n')
       const hasLocal = !!(pre.recommended_id && pre.recommended_id !== pre.current_core_id)
-      const msg = `当前节点与内核 [${pre.current_core}] 兼容性: ${level}\n${reasons}` +
-        (hasLocal ? `\n\n推荐本地内核: v${pre.recommended_version}` : `\n\n本地无兼容内核，需从 GitHub 下载`)
-
-      try {
-        if (hasLocal) {
-          await ElMessageBox.confirm(msg, '兼容性提示', {
-            type: 'warning',
-            confirmButtonText: '切换并启动',
-            cancelButtonText: '仍要启动',
-          })
-          await api.activateCore(pre.recommended_id)
-          await runtime.refresh()
-        } else {
-          ElMessageBox.confirm(msg, '需要下载兼容内核', {
+      // v2rayN 路线：有兼容内核时自动切换，不再弹确认
+      if (hasLocal) {
+        ElMessage({
+          message: `自动切换到兼容内核 v${pre.recommended_version}`,
+          type: 'info',
+          duration: 3000,
+        })
+      } else if (level === 'bad') {
+        // 无本地兼容内核且完全不兼容，提示下载
+        const msg = `当前节点与内核 [${pre.current_core}] 不兼容：\n${reasons}\n\n本地无兼容内核，需从 GitHub 下载`
+        try {
+          await ElMessageBox.confirm(msg, '需要下载兼容内核', {
             type: 'warning',
             confirmButtonText: '立即下载并启动',
             cancelButtonText: '取消',
-          }).then(async () => {
-            const loading = ElMessage({ message: '正在下载兼容内核...', type: 'info', duration: 0 })
-            try {
-              const r = await api.autoMatchCore()
-              if (r.action === 'downloaded') {
-                ElMessage.success(`已下载 v${r.version}`)
-              } else if (r.action === 'activate_existing') {
-                ElMessage.success(`已激活 v${r.version}`)
-              }
-              await settings.load()
-              await runtime.refresh()
-              await doStart()
-            } catch (e: any) {
-              ElMessage.error('下载失败：' + (e?.message || String(e)))
-            } finally {
-              loading.close()
+          })
+          const loading = ElMessage({ message: '正在下载兼容内核...', type: 'info', duration: 0 })
+          try {
+            const r = await api.autoMatchCore()
+            if (r.action === 'downloaded') {
+              ElMessage.success(`已下载 v${r.version}`)
+            } else if (r.action === 'activate_existing') {
+              ElMessage.success(`已激活 v${r.version}`)
             }
-          }).catch(() => {})
+            await settings.load()
+            await runtime.refresh()
+            await doStart()
+          } catch (e: any) {
+            ElMessage.error('下载失败：' + (e?.message || String(e)))
+          } finally {
+            loading.close()
+          }
+        } catch {
           return
         }
-      } catch {
         return
       }
     }
@@ -357,7 +354,8 @@ async function onStart() {
 async function doStart() {
   try {
     const r = await runtime.startCore({ auto_fallback: autoFallback.value })
-    ElMessage.success('已启动 · ' + (r.server || ''))
+    const switchMsg = r.auto_switched ? `（已自动切换到 v${r.core_version}）` : ''
+    ElMessage.success('已启动 · ' + (r.server || '') + switchMsg)
     if (r.attempts && r.attempts.length > 1) {
       const ok = r.attempts.find((a: any) => a.ok)
       if (ok && ok.core_id) await runtime.refresh()

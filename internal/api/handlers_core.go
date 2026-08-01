@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"boxpanel/internal/compat"
 	"boxpanel/internal/config"
 	"boxpanel/internal/core/clashapi"
 	"boxpanel/internal/core/configgen"
@@ -88,6 +88,16 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 	// 聚合结果
 	lastAttempt := attempts[len(attempts)-1]
 	if lastAttempt.OK {
+		// 自动切换 active_core_id 为实际使用的内核（v2rayN 路线：根据节点协议自动选内核）
+		prevActiveID := st.ActiveCoreID
+		if lastAttempt.CoreID != prevActiveID {
+			st.ActiveCoreID = lastAttempt.CoreID
+			_ = s.store.SaveSettings(ctx, st)
+			s.mu.Lock()
+			s.settings = st
+			s.mu.Unlock()
+			slog.Info("auto-switched active core", "core_id", lastAttempt.CoreID, "version", lastAttempt.Version, "prev", prevActiveID)
+		}
 		writeJSON(w, 200, map[string]any{
 			"started":       true,
 			"pid":           lastAttempt.PID,
@@ -97,6 +107,7 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 			"server":        srv.Name,
 			"attempts":      attempts,
 			"probe_method":  s.lastProbeMethod,
+			"auto_switched": lastAttempt.CoreID != prevActiveID,
 		})
 		return
 	}
@@ -107,40 +118,53 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 }
 
 // candidateCores returns the cores to try in order.
-// If autoFallback, prepend active then add other cores by SuggestCore priority.
+// Uses NodeValidator to prioritize cores that support the server's protocol/transport.
+// This is the v2rayN approach: auto-select the best core, not hard-block.
 func candidateCores(st models.Settings, srv *models.Server, autoFallback bool) []models.CoreConfig {
 	if len(st.Cores) == 0 {
 		return nil
 	}
-	// 当前激活
-	var active *models.CoreConfig
+
+	// Score each core: valid=0 (best), warnings=1, invalid=2
+	type scoredCore struct {
+		core  models.CoreConfig
+		score int
+	}
+	var scored []scoredCore
 	for i := range st.Cores {
-		if st.Cores[i].ID == st.ActiveCoreID {
-			active = &st.Cores[i]
-			break
+		c := &st.Cores[i]
+		kind := c.Kind
+		if kind == "" {
+			kind = models.CoreKindSingBox
 		}
-	}
-	if active == nil {
-		active = &st.Cores[0]
-	}
-	if !autoFallback {
-		return []models.CoreConfig{*active}
-	}
-	// 自动回退：active 优先 + 其余按 SuggestCore 排序
-	out := []models.CoreConfig{*active}
-	seen := map[string]bool{active.ID: true}
-	if suggested := compat.SuggestCore(*srv, st.Cores); suggested != nil && !seen[suggested.ID] {
-		out = append(out, *suggested)
-		seen[suggested.ID] = true
-	}
-	for i := range st.Cores {
-		if seen[st.Cores[i].ID] {
-			continue
+		vr := nodevalidator.Validate(*srv, kind)
+		score := 2 // default: invalid
+		if vr.Valid {
+			if len(vr.Warnings) > 0 {
+				score = 1 // valid but with warnings
+			} else {
+				score = 0 // perfectly valid
+			}
 		}
-		out = append(out, st.Cores[i])
-		seen[st.Cores[i].ID] = true
+		scored = append(scored, scoredCore{core: *c, score: score})
 	}
-	// 最多尝试 3 个
+
+	// Sort by score (best first), stable sort preserves original order within same score
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].score < scored[j].score
+	})
+
+	out := make([]models.CoreConfig, 0, len(scored))
+	for _, s := range scored {
+		out = append(out, s.core)
+	}
+
+	// If not autoFallback, only try the best core
+	if !autoFallback && len(out) > 0 {
+		return []models.CoreConfig{out[0]}
+	}
+
+	// Try up to 3 cores in priority order
 	if len(out) > 3 {
 		out = out[:3]
 	}
@@ -151,14 +175,16 @@ func candidateCores(st models.Settings, srv *models.Server, autoFallback bool) [
 func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st models.Settings) error {
 	ctx := context.Background()
 
-	// --- NodeValidator 前置校验（借鉴 v2rayN） ---
-	// 配置生成前校验协议+传输类型兼容性，避免启动后才报错
+	// --- NodeValidator 前置校验（借鉴 v2rayN：排序而非硬拦截） ---
+	// 配置生成前校验协议+传输类型兼容性
+	// 注意：硬不兼容的内核已在 candidateCores 排序时排到后面，
+	// 到这里的应该是兼容的内核。但仍做一次防御性检查，返回 error 让回退机制跳过。
 	coreKind := core.Kind
 	if coreKind == "" {
 		coreKind = models.CoreKindSingBox
 	}
 	if vr := nodevalidator.Validate(srv, coreKind); !vr.Valid {
-		return fmt.Errorf("node pre-validation failed: %s", vr.Errors[0].Message)
+		return fmt.Errorf("core %s (%s) incompatible: %s", core.Label, coreKind, vr.Errors[0].Message)
 	}
 
 	profile := defaultProfile(st)
