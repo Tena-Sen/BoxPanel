@@ -1,13 +1,3 @@
----
-AIGC:
-  ContentProducer: '001191110102MAD55U9H0F10002'
-  ContentPropagator: '001191110102MAD55U9H0F10002'
-  Label: '1'
-  ProduceID: 'ebbb3933-508e-4f58-b54d-744a9639aac9'
-  PropagateID: 'ebbb3933-508e-4f58-b54d-744a9639aac9'
-  ReservedCode1: '95b79fc2-3c8e-4941-aa9d-d7a946636bda'
-  ReservedCode2: '95b79fc2-3c8e-4941-aa9d-d7a946636bda'
----
 
 # BoxPanel — 多内核代理管理面板
 
@@ -272,5 +262,3 @@ cd .. && go build -o boxpanel.exe ./cmd/panel
 
 ### Keywords (for search discovery)
 `proxy manager` `proxy panel` `multi-kernel proxy` `sing-box gui` `xray gui` `mihomo gui` `v2rayN alternative` `clash alternative` `VLESS` `VMess` `Trojan` `Shadowsocks` `Hysteria2` `TUIC` `Reality` `XHTTP` `subscription manager` `system proxy` `代理管理` `代理面板` `多内核代理` `网络工具` `节点管理` `订阅管理` `流量管理`
-
-> AI生成
