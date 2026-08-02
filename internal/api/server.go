@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -97,6 +98,13 @@ func New(s store.Store, runner *core.Runner, gen *configgen.Builder, coreMgr *co
 	runner.SetExitHandler(func(code int) {
 		srv.logBroadcaster.BroadcastExit(code)
 		srv.refreshClashClient()
+		// Auto-disable system proxy when core exits to prevent network breakage.
+		// If the proxy is still pointing at the now-dead core, all traffic would be
+		// routed to a non-existent port, effectively cutting off all internet access.
+		if st := srv.sys.Get(); st.Enabled {
+			slog.Warn("core exited, auto-disabling system proxy to prevent network breakage")
+			_, _ = srv.sys.Disable()
+		}
 	})
 	srv.lat = latency.New(srv.clash, st.LatencyTestURL)
 	srv.bw = bandwidth.New(srv.clash, srv.proxyListenAddr(), nil)

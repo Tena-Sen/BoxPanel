@@ -278,7 +278,13 @@ async function onGlobalProxy() {
   if (runtime.running) {
     await runtime.restartCore()
   }
-  await runtime.enableSysProxy()
+  // Only enable system proxy after confirming core is running
+  await runtime.refresh()
+  if (runtime.running) {
+    await runtime.enableSysProxy()
+  } else {
+    ElMessage.warning('内核未运行，系统代理未开启。请先启动内核再开启全局代理。')
+  }
 }
 
 async function offGlobalProxy() {
@@ -509,6 +515,10 @@ async function doStart() {
     if (r.attempts && r.attempts.length > 1) {
       const ok = r.attempts.find((a: any) => a.ok)
       if (ok && ok.core_id) await runtime.refresh()
+    }
+    // If in global mode, auto-enable system proxy now that core is running
+    if (currentMode.value === 'global' && !sysProxy.value?.enabled) {
+      await runtime.enableSysProxy()
     }
   } catch (e: any) {
     ElMessage.error('启动失败：' + (e?.message || String(e)))

@@ -45,18 +45,27 @@ func (s *APIServer) corePID() int {
 	return 0
 }
 
-// coreStop stops whatever core is running.
+// coreStop stops whatever core is running and disables system proxy.
 func (s *APIServer) coreStop() error {
+	var err error
 	if s.runner.IsRunning() {
-		return s.runner.Stop()
-	}
-	if s.activeCoreImpl != nil && s.activeCoreImpl.IsRunning() {
-		err := s.activeCoreImpl.Stop()
+		err = s.runner.Stop()
+	} else if s.activeCoreImpl != nil && s.activeCoreImpl.IsRunning() {
+		err = s.activeCoreImpl.Stop()
 		s.activeCoreImpl = nil
 		s.runningKind = ""
-		return err
 	}
-	return nil
+	// Always disable system proxy when core stops to prevent network breakage
+	s.autoDisableSysProxy()
+	return err
+}
+
+// autoDisableSysProxy disables system proxy if it's currently enabled.
+func (s *APIServer) autoDisableSysProxy() {
+	if st := s.sys.Get(); st.Enabled {
+		slog.Warn("core stopped, auto-disabling system proxy")
+		_, _ = s.sys.Disable()
+	}
 }
 
 func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
