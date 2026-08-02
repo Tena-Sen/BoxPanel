@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '08bd9833-0789-4b74-8619-8f2f700188ab'
-  PropagateID: '08bd9833-0789-4b74-8619-8f2f700188ab'
-  ReservedCode1: '85290a84-867e-48c8-b4de-11d0ae87d730'
-  ReservedCode2: '85290a84-867e-48c8-b4de-11d0ae87d730'
+  ProduceID: 'f3b78018-e97c-492d-9a2f-7c421ca3240c'
+  PropagateID: 'f3b78018-e97c-492d-9a2f-7c421ca3240c'
+  ReservedCode1: 'f29ada31-2d91-41a7-ba55-b1968d6f1621'
+  ReservedCode2: 'f29ada31-2d91-41a7-ba55-b1968d6f1621'
 ---
 
 # BoxPanel — 多内核代理管理面板
@@ -271,12 +271,6 @@ cd .. && go build -o boxpanel.exe ./cmd/panel
 ```
 
 ### Keywords (for search discovery)
-`proxy manager` `proxy panel` `multi-kernel proxy` `sing-box gui` `xray gui` `mihomo gui` `v2rayN alternative` `clash alternative` `VLESS` `VMess` `Trojan` `Shadowsocks` `Hysteria2` `TUIC` `Reality` `XHTTP` `subscription manager` `system proxy` `代理管理` `代理面板` `多内核代理` `科学上网` `节点管理` `订阅管理` `翻墙工具` `梯子`
-
----
-
-## License
-
-[MIT](LICENSE)
+`proxy manager` `proxy panel` `multi-kernel proxy` `sing-box gui` `xray gui` `mihomo gui` `v2rayN alternative` `clash alternative` `VLESS` `VMess` `Trojan` `Shadowsocks` `Hysteria2` `TUIC` `Reality` `XHTTP` `subscription manager` `system proxy` `代理管理` `代理面板` `多内核代理` `网络工具` `节点管理` `订阅管理` `流量管理`
 
 > AI生成
