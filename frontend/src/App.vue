@@ -25,14 +25,14 @@
           v-slot="{ navigate, isActive }"
         >
           <div :class="['nav-item', isActive && 'active']" @click="navigate">
-            <span style="width:20px;text-align:center;">{{ r.icon }}</span>
+            <span class="nav-icon">{{ r.icon }}</span>
             <span class="nav-label">{{ t(r.titleKey) }}</span>
           </div>
         </router-link>
       </div>
       <div class="nav-footer">
         <div class="nav-item nav-quit" @click="onQuit">
-          <span style="width:20px;text-align:center;">⏻</span>
+          <span class="nav-icon">⏻</span>
           <span class="nav-label">{{ t('nav.quit', '退出') }}</span>
         </div>
       </div>

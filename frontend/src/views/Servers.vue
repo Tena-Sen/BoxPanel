@@ -422,9 +422,17 @@ async function onSaveEdit() {
 </script>
 
 <style scoped>
+.server-card {
+  transition: all var(--transition);
+}
+.server-card:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
 .server-card.selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-soft));
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
 }
 .test-badges {
   display: flex;

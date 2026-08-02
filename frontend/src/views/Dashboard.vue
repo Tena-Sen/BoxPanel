@@ -5,7 +5,9 @@
     <!-- 顶部统计卡片 -->
     <div class="stat-row">
       <div class="stat-card" :class="{ active: runtime.running }">
-        <div class="stat-icon">{{ runtime.running ? '●' : '○' }}</div>
+        <div class="stat-icon" :style="{ background: runtime.running ? 'var(--green-soft)' : 'var(--bg-mute)', color: runtime.running ? 'var(--green)' : 'var(--text-mute)' }">
+          {{ runtime.running ? '●' : '○' }}
+        </div>
         <div class="stat-body">
           <div class="stat-value">{{ runtime.running ? '运行中' : '已停止' }}</div>
           <div class="stat-label">
@@ -15,28 +17,28 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">◉</div>
+        <div class="stat-icon" style="background:var(--accent-soft);color:var(--accent);">◉</div>
         <div class="stat-body">
           <div class="stat-value">{{ state?.server_count || 0 }}</div>
           <div class="stat-label">节点</div>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">▤</div>
+        <div class="stat-icon" style="background:var(--purple-soft);color:var(--purple);">▤</div>
         <div class="stat-body">
           <div class="stat-value">{{ state?.subscription_count || 0 }}</div>
           <div class="stat-label">订阅</div>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">↕</div>
+        <div class="stat-icon" style="background:var(--cyan-soft);color:var(--cyan);">↕</div>
         <div class="stat-body">
           <div class="stat-value">{{ runtime.stats.connections || 0 }}</div>
           <div class="stat-label">活跃连接</div>
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">⬇</div>
+        <div class="stat-icon" style="background:var(--yellow-soft);color:var(--yellow);">⬇</div>
         <div class="stat-body">
           <div class="stat-value">{{ formatBytes(runtime.stats.cumulative_down_total || 0) }}</div>
           <div class="stat-label">下载总量</div>
@@ -447,45 +449,51 @@ function formatUptime(seconds: number): string {
 </script>
 
 <style scoped>
-.card-title {
-  font-size: 15px;
-  font-weight: 600;
-}
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
 }
 .stat-card {
   background: var(--bg-soft);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 16px;
+  border-radius: var(--radius);
+  padding: 16px 18px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  transition: border-color 0.2s;
+  gap: 14px;
+  transition: all var(--transition);
+  box-shadow: var(--shadow-sm);
+}
+.stat-card:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
 }
 .stat-card.active {
   border-color: var(--green);
+  box-shadow: 0 0 0 1px var(--green), var(--shadow-sm);
 }
 .stat-icon {
-  font-size: 20px;
-  color: var(--text-mute);
-  width: 28px;
-  text-align: center;
+  font-size: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-}
-.stat-card.active .stat-icon {
-  color: var(--green);
+  background: var(--bg-mute);
+  color: var(--text-mute);
+  transition: all var(--transition);
 }
 .stat-body {
   min-width: 0;
 }
 .stat-value {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 .stat-label {
   font-size: 12px;
@@ -495,7 +503,7 @@ function formatUptime(seconds: number): string {
 .info-grid {
   display: grid;
   grid-template-columns: 80px 1fr;
-  gap: 6px 12px;
+  gap: 8px 14px;
   font-size: 13px;
 }
 .info-label {
@@ -503,6 +511,13 @@ function formatUptime(seconds: number): string {
 }
 .info-value {
   word-break: break-all;
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 @media (max-width: 768px) {
   .stat-row {
