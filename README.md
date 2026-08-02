@@ -3,27 +3,75 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '23b39c66-221a-4392-bcb3-61687e271ca6'
-  PropagateID: '23b39c66-221a-4392-bcb3-61687e271ca6'
-  ReservedCode1: '48499d70-1156-4d48-8b0a-b3446f61e7e4'
-  ReservedCode2: '48499d70-1156-4d48-8b0a-b3446f61e7e4'
+  ProduceID: '08bd9833-0789-4b74-8619-8f2f700188ab'
+  PropagateID: '08bd9833-0789-4b74-8619-8f2f700188ab'
+  ReservedCode1: '85290a84-867e-48c8-b4de-11d0ae87d730'
+  ReservedCode2: '85290a84-867e-48c8-b4de-11d0ae87d730'
 ---
 
-# BoxPanel
+# BoxPanel — 多内核代理管理面板
 
-多内核代理管理面板 —— Go 后端 + Vue 3 前端，单二进制交付。借鉴 v2rayN 核心架构：多协议节点、多内核引擎自动切换、代理分组、运行时切换、路由规则、实时流量、订阅管理。
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js)](https://vuejs.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **支持 4 种内核引擎**：sing-box（全协议）/ Xray（vless/vmess/trojan/ss + xhttp）/ mihomo（ss/vmess/trojan/hysteria2/tuic）/ Hysteria2（hy2 专用加速）。启动时根据节点协议/传输类型自动选择最兼容的内核，无需手动切换。
+**BoxPanel** 是一个开箱即用的多内核代理管理面板，Go 后端 + Vue 3 前端，单二进制交付。借鉴 v2rayN 核心架构，支持 **sing-box / Xray / mihomo / Hysteria2** 四大内核引擎，根据节点协议自动选择最兼容的内核，无需手动切换。
+
+> English description below ↓
 
 ---
 
-## 一、快速开始（用户）
+## 为什么选 BoxPanel？
+
+| 痛点 | BoxPanel 方案 |
+|---|---|
+| 不同节点需要不同内核 | **多内核引擎**：4 种内核自动切换，xhttp 节点自动下载 Xray |
+| 切节点要重启 | **运行时切换**：分组内秒级切节点，核心不重启 |
+| 不知道哪个内核兼容 | **NodeValidator 前置校验**：启动前自动检测，不兼容降级为 block 而非阻断 |
+| 管理工具太重 | **单 exe 交付**：无运行时依赖，双击即用，前端 go:embed 打包 |
+
+---
+
+## 核心特性
+
+- **多内核引擎** — sing-box（全协议）/ Xray（vless/vmess/trojan/ss + xhttp）/ mihomo（hy2/tuic）/ Hysteria2，自动匹配最佳内核
+- **6 种协议** — VLESS / VMess / Trojan / Shadowsocks / Hysteria2 / TUIC，支持 Reality / XTLS
+- **运行时分组** — selector 手动选择 / url_test 自动测速 / fallback 故障转移，切换无需重启
+- **路由规则** — 域名 / IP / 进程名规则 + geosite/geoip 规则集开关
+- **订阅管理** — URL 导入、定时刷新、合并去重
+- **系统代理** — 一键开关，内核退出自动关闭防断网
+- **代理模式** — 规则模式 / 全局模式 / AI(TUN) 模式
+- **实时监控** — 流量图表、节点延迟、内核日志
+- **多格式导入** — 分享链接 / sing-box JSON / Clash YAML / base64 订阅
+- **节点导出** — 批量导出 + 二维码分享
+
+---
+
+## 兼容性矩阵
+
+| 协议 / 传输 | sing-box | Xray | mihomo | Hysteria2 |
+|---|:---:|:---:|:---:|:---:|
+| VLESS + Reality | ✓ | ✓ | - | - |
+| VMess | ✓ | ✓ | ✓ | - |
+| Trojan | ✓ | ✓ | ✓ | - |
+| Shadowsocks | ✓ | ✓ | ✓ | - |
+| Hysteria2 | ✓ | - | ✓ | ✓ |
+| TUIC | ✓ | - | ✓ | - |
+| WebSocket | ✓ | ✓ | ✓ | - |
+| gRPC | ✓ | ✓ | - | - |
+| HTTP/2 / h2 | ✓ | ✓ | - | - |
+| HTTPUpgrade | ✓ | ✓ | - | - |
+| XHTTP / SplitHTTP | ✗ | ✓ | ✗ | ✗ |
+
+---
+
+## 快速开始
 
 ### 方式 A：直接运行（推荐）
 
 双击 **`启动 BoxPanel.bat`**，浏览器自动打开 `http://127.0.0.1:7820`。
 
-如果端口被占用，会自动换到 7821/7822...（控制台窗口会打印实际地址）。
+端口被占用时自动换到 7821/7822...（控制台窗口会打印实际地址）。
 
 ### 方式 B：命令行
 
@@ -33,17 +81,17 @@ boxpanel.exe -port 9000          :: 指定端口
 boxpanel.exe -no-browser         :: 不自动开浏览器
 ```
 
-关闭：关掉控制台窗口，或按 `Ctrl+C`。
+关闭：关掉控制台窗口，或 `Ctrl+C`。
 
 ---
 
-## 二、第一次使用：5 步上网
+## 5 步上网
 
 ### 1. 导入节点
-左侧 **节点** → 点「导入节点」→ 粘贴分享链接，每行一个：
+左侧 **节点** →「导入节点」→ 粘贴分享链接，每行一个：
 
 ```
-vless://670a39ac-ffb4-46ed-b2e2-7087dce3bebb@example.com:443?type=tcp&security=reality&sni=www.apple.com&fp=chrome&pbk=xxx&sid=xxx&flow=xtls-rprx-vision#我的节点
+vless://uuid@example.com:443?type=tcp&security=reality&sni=www.apple.com&fp=chrome&pbk=xxx&sid=xxx&flow=xtls-rprx-vision#我的节点
 vmess://eyJ2IjoiMiIs...
 trojan://password@server:443#名字
 ss://...
@@ -51,7 +99,7 @@ hysteria2://...
 tuic://...
 ```
 
-也支持粘贴 **sing-box JSON 配置**、**Clash YAML**、**整段 base64 订阅**。导入后第一个节点会自动选中。
+也支持粘贴 **sing-box JSON 配置**、**Clash YAML**、**整段 base64 订阅**。
 
 ### 2.（可选）建代理分组
 左侧 **分组** →「新建分组」→ 选类型：
@@ -62,8 +110,6 @@ tuic://...
 | **自动选最优 (url_test)** | 持续测速，自动用延迟最低的 |
 | **故障转移 (fallback)** | 按顺序，第一个可用就用 |
 
-把节点加进分组。分组是 v2rayN 的核心能力——**核心运行时可在组内秒级切换，无需重启**。
-
 ### 3.（可选）配路由规则
 左侧 **路由** →「新建规则」。例如：
 
@@ -73,113 +119,97 @@ tuic://...
 | IP/CIDR | `192.168.0.0/16` | 直连 | 内网直连 |
 | 进程名 | `xxx.exe` | 阻断 | 拦截该进程 |
 
-规则从上到下匹配，命中即生效。下方「规则集」可开关内置的 geosite-cn / !cn。
-
 ### 4. 启动
 左侧 **概览** → 点「启动」。状态点变绿 = 内核在跑。
 
-> AI/TUN 模式（接管全局流量）需要管理员权限：右键 `启动 BoxPanel.bat` → 以管理员身份运行。
+> AI/TUN 模式（接管全局流量）需管理员权限：右键 bat → 以管理员身份运行。
 
-### 5. 开系统代理（让浏览器走代理）
-概览页「系统代理」→ 点「开启」。这会设置 Windows 系统代理为 `127.0.0.1:20808`，浏览器/支持系统代理的应用即走代理。
-
-不用了点「关闭」。
+### 5. 开系统代理
+概览页「系统代理」→ 点「开启」，浏览器即走代理。不用了点「关闭」。
 
 ---
 
-## 三、各页面说明
+## 各页面说明
 
-| 页面 | 干什么 |
+| 页面 | 功能 |
 |---|---|
-| **概览** | 启停核心、系统代理开关、实时流量图、当前生效节点/分组 |
-| **节点** | 导入/编辑/删除/测速节点，点选当前节点，兼容性徽章提示 |
-| **分组** | 建 selector/url_test/fallback 组，运行时切换成员 |
+| **概览** | 启停核心、系统代理开关、实时流量图、当前节点/分组 |
+| **节点** | 导入/编辑/删除/测速节点，点选当前节点，兼容性徽章 |
+| **分组** | selector / url_test / fallback 组，运行时切换 |
 | **路由** | 自定义路由规则 + 规则集开关 |
-| **订阅** | 添加订阅 URL，定时自动刷新，合并去重 |
-| **内核** | 多内核管理：下载/添加/删除/切换，自动匹配最佳内核 |
+| **订阅** | 添加订阅 URL，定时刷新，合并去重 |
+| **内核** | 多内核管理：下载/添加/删除/切换/探测 |
 | **日志** | 内核实时日志（SSE 流），按级别着色 |
 | **设置** | 主题（深/浅）、语言（中/英）、端口、延迟测试 URL 等 |
 
 ---
 
-## 四、多内核引擎（v2rayN 架构）
+## 多内核架构（v2rayN 路线）
 
-BoxPanel 借鉴 v2rayN 的多内核架构，核心设计：
+BoxPanel 借鉴 v2rayN 多内核架构，核心设计：
 
 | 概念 | 说明 |
 |---|---|
-| **CoreInfo 元数据注册表** | 每种内核的协议/传输兼容性、启动参数、下载地址等均为数据驱动，新增内核 = 追加一条记录 |
-| **NodeValidator 前置校验** | 启动前检查节点协议+传输与内核的兼容性，不兼容时自动切换到兼容内核 |
-| **candidateCores 排序** | 按 NodeValidator 评分排序内核：兼容=0 > 警告=1 > 不兼容=2，优先用最好的 |
-| **自动下载** | 启动时发现缺少兼容内核，自动从 GitHub 下载并注册 |
-| **版本适配** | configgen 按目标内核版本生成对应格式，自动处理字段差异 |
-
-### 兼容性矩阵
-
-| 传输类型 | sing-box | Xray | mihomo | Hysteria2 |
-|---|---|---|---|---|
-| TCP / raw | ✓ | ✓ | ✓ | - |
-| WebSocket | ✓ | ✓ | ✓ | - |
-| gRPC | ✓ | ✓ | - | - |
-| HTTP/2 | ✓ | ✓ | - | - |
-| HTTPUpgrade | ✓ | ✓ | - | - |
-| xhttp / splithttp | ✗ | ✓ | ✗ | ✗ |
-| kcp | ✗ | ✓ | ✗ | ✗ |
+| **CoreInfo 元数据注册表** | 每种内核的协议/传输兼容性、下载地址等均为数据驱动，新增内核 = 追加一条记录 |
+| **NodeValidator 前置校验** | 启动前检查节点兼容性，不兼容时自动切换到兼容内核，而非硬拦截 |
+| **candidateCores 排序** | 按 NodeValidator 评分排序：兼容=0 > 警告=1 > 不兼容=2 |
+| **自动下载** | 缺少兼容内核时自动从 GitHub 下载并注册 |
+| **版本适配** | configgen 按目标内核版本生成对应格式 |
 
 ---
 
-## 五、常见问题
+## 常见问题
 
 **Q：启动后状态点不变绿？**
-看「日志」页的报错。常见：节点配置无效、端口被占用、TUN 模式没管理员权限。
+看「日志」页报错。常见：节点配置无效、端口被占用、TUN 模式没管理员权限。
 
 **Q：改了节点/分组/路由不生效？**
-分组切换是实时的（不用重启）。但**改节点配置或路由规则后需要重启核心**（概览页点「重启」）。
+分组切换是实时的。改节点配置或路由规则后需重启核心（概览页「重启」）。
 
 **Q：xhttp 节点启动失败？**
-xhttp/splithttp 是 Xray 独有传输，sing-box 不支持。BoxPanel 会自动下载 Xray 内核并切换，无需手动操作。
+xhttp/splithttp 是 Xray 独有传输，sing-box 不支持。BoxPanel 会自动下载 Xray 并切换。
 
 **Q：数据存在哪？**
-`data/boxpanel.db`（SQLite）。删掉这个文件等于重置。
+`data/boxpanel.db`（SQLite）。删掉 = 重置。
 
 **Q：怎么完全卸载？**
-删 `boxpanel.exe` + `data/` 目录。内核和规则集是独立的，可单独保留。
+删 `boxpanel.exe` + `data/` 目录。
 
 ---
 
-## 六、开发者
+## 开发者
 
 ### 技术栈
-- **后端**：Go 1.22+ · chi 路由 · modernc.org/sqlite（纯 Go 无 CGO）· gorilla/websocket
-- **前端**：Vite 5 · Vue 3.4 · TypeScript · Element Plus · Pinia · Vue Router · vue-i18n · ECharts
-- **内核**：sing-box / Xray / mihomo / Hysteria2（独立二进制，由 BoxPanel 作为子进程管理）
+- **后端**：Go 1.22+ · chi · modernc.org/sqlite（纯 Go 无 CGO）· gorilla/websocket
+- **前端**：Vite 5 · Vue 3 · TypeScript · Element Plus · Pinia · vue-i18n · ECharts
+- **内核**：sing-box / Xray / mihomo / Hysteria2（独立二进制，子进程管理）
 
 ### 项目结构
 ```
 BoxPanel/
 ├── cmd/panel/              Go 入口
 ├── internal/
-│   ├── api/                HTTP/SSE 层（chi 路由，40+ 接口）
-│   ├── core/               多内核进程管理 + Clash API 客户端 + 配置生成
-│   │   ├── configgen/      sing-box 配置生成 + 版本 schema 适配器
+│   ├── api/                HTTP/SSE 层（chi，40+ 接口）
+│   ├── core/               多内核进程管理 + Clash API + 配置生成
+│   │   ├── configgen/      sing-box 配置生成 + 版本适配器
 │   │   ├── xray/           Xray 内核适配
 │   │   ├── mihomo/         mihomo 内核适配
 │   │   └── hysteria2/      Hysteria2 内核适配
-│   ├── coreinfo/           CoreInfo 元数据注册表（数据驱动，零代码扩展）
+│   ├── coreinfo/           CoreInfo 元数据注册表
 │   ├── nodevalidator/      NodeValidator 前置校验
-│   ├── protocol/           6 协议插件（vless/vmess/trojan/ss/hy2/tuic），注册式扩展
-│   ├── routing/            路由规则编译引擎（含单测）
+│   ├── protocol/           6 协议插件（vless/vmess/trojan/ss/hy2/tuic）
+│   ├── routing/            路由规则编译引擎
 │   ├── coredl/             多内核下载器（GitHub + 镜像回退 + 断点续传）
 │   ├── import_/            多格式导入
 │   ├── subscription/       订阅抓取/合并
 │   ├── latency/            穿代理测速
 │   ├── readyprobe/         SOCKS5 握手探测
-│   ├── sysproxy/           跨平台系统代理（Win/Mac/Linux）
-│   ├── store/sqlite/       持久化（文档模式）
+│   ├── sysproxy/           跨平台系统代理
+│   ├── store/sqlite/       持久化
 │   ├── models/             领域模型
 │   └── web/                go:embed 前端
-├── frontend/               Vite 工程（构建产物输出到 internal/web/dist）
-└── data/                   运行时数据（数据库 + 内核二进制 + 规则集）
+├── frontend/               Vite 工程
+└── data/                   运行时数据（db + 内核 + 规则集）
 ```
 
 ### 从源码构建
@@ -187,7 +217,7 @@ BoxPanel/
 :: 1. 构建前端
 cd frontend
 npm install --legacy-peer-deps
-npm run build            :: 产物输出到 internal/web/dist
+npm run build            :: 产物 → internal/web/dist
 
 :: 2. 构建后端（含前端）
 cd ..
@@ -205,7 +235,48 @@ cd frontend && npm run dev   :: 另开终端跑 boxpanel.exe
 
 ### 测试
 ```bat
-go test .\internal\routing\...    :: 路由编译引擎单测
+go test .\internal\routing\...
 ```
+
+---
+
+## English
+
+**BoxPanel** is a multi-kernel proxy management panel (Go + Vue 3, single binary). Inspired by v2rayN architecture, it supports **sing-box / Xray / mihomo / Hysteria2** kernel engines with automatic kernel switching based on node protocol.
+
+### Key Features
+- **Multi-kernel engine** — Auto-switch between sing-box, Xray, mihomo, Hysteria2 based on node compatibility
+- **6 protocols** — VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC with Reality/XTLS support
+- **Runtime group switching** — selector / url_test / fallback groups, switch without kernel restart
+- **Routing rules** — Domain / IP / process rules + geosite/geoip rule-set toggles
+- **Subscription management** — URL import, scheduled refresh, deduplication
+- **System proxy** — One-click toggle with auto-cleanup on kernel exit
+- **Proxy modes** — Rule / Global / AI(TUN)
+- **Real-time monitoring** — Traffic charts, latency badges, kernel logs
+- **Multi-format import** — Share links / sing-box JSON / Clash YAML / base64 subscription
+- **Node export** — Batch export + QR code sharing
+
+### Quick Start
+```bat
+:: Download and run
+boxpanel.exe                    :: Default port 7820, auto-open browser
+boxpanel.exe -port 9000         :: Custom port
+boxpanel.exe -no-browser        :: Don't open browser
+```
+
+### Build from Source
+```bat
+cd frontend && npm install --legacy-peer-deps && npm run build
+cd .. && go build -o boxpanel.exe ./cmd/panel
+```
+
+### Keywords (for search discovery)
+`proxy manager` `proxy panel` `multi-kernel proxy` `sing-box gui` `xray gui` `mihomo gui` `v2rayN alternative` `clash alternative` `VLESS` `VMess` `Trojan` `Shadowsocks` `Hysteria2` `TUIC` `Reality` `XHTTP` `subscription manager` `system proxy` `代理管理` `代理面板` `多内核代理` `科学上网` `节点管理` `订阅管理` `翻墙工具` `梯子`
+
+---
+
+## License
+
+[MIT](LICENSE)
 
 > AI生成
