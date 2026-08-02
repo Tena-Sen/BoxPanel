@@ -63,6 +63,7 @@ export const api = {
   batchBandwidth: (timeoutSec = 10) =>
     request<Record<string, BandwidthResult>>(`/api/servers/batch-bandwidth?timeout=${timeoutSec}`, { method: 'POST' }),
   importText: (text: string) => request<ImportResult>('/api/servers/import', { method: 'POST', body: { text } }),
+  exportServers: (ids?: string[]) => request<{text: string}>('/api/servers/export', { method: 'POST', body: { ids: ids || [] } }),
 
   // groups
   listGroups: () => request<Group[]>('/api/groups'),

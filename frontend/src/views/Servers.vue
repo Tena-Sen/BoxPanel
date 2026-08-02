@@ -5,6 +5,7 @@
     <div class="toolbar">
       <el-button type="primary" @click="showImport = true">📥 {{ t('servers.import') }}</el-button>
       <el-button @click="onTestAll" :loading="testingAll">⚡ 全部测试</el-button>
+      <el-button @click="onExportSelected" :disabled="!servers.selectedId">📤 导出</el-button>
       <div class="spacer"></div>
       <!-- 搜索框 -->
       <el-input
@@ -79,6 +80,7 @@
         @click.stop="onTestOne(srv)"
       >⚡</el-button>
       <el-button size="small" @click.stop="onEdit(srv)">✎</el-button>
+      <el-button size="small" @click.stop="onQuickExport(srv)" title="导出分享链接">📤</el-button>
       <el-button size="small" type="danger" @click.stop="onDelete(srv)">✕</el-button>
     </div>
 
@@ -93,6 +95,34 @@
       <template #footer>
         <el-button @click="showImport = false">取消</el-button>
         <el-button type="primary" :loading="importing" @click="onImport">{{ t('servers.import') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导出对话框 -->
+    <el-dialog v-model="showExport" title="导出节点" width="560px">
+      <div v-if="exportLoading" style="text-align:center;padding:20px;">生成中...</div>
+      <template v-else>
+        <div style="margin-bottom:12px;">
+          <el-input
+            v-model="exportText"
+            type="textarea"
+            :rows="6"
+            readonly
+            placeholder="分享链接"
+          />
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <el-button size="small" @click="onCopyExport">📋 复制链接</el-button>
+          <el-button size="small" @click="onShowQR">📱 二维码</el-button>
+        </div>
+        <div v-if="showQR" style="text-align:center;">
+          <div v-if="qrLoading" style="padding:20px;">生成中...</div>
+          <img v-else-if="qrDataUrl" :src="qrDataUrl" alt="QR Code" style="max-width:256px;" />
+          <div v-else class="muted">二维码生成失败</div>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="showExport = false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -133,6 +163,7 @@ import LatencyBadge from '@/components/LatencyBadge.vue'
 import BandwidthBadge from '@/components/BandwidthBadge.vue'
 import type { Server, CompatLevel, CoreInfo } from '@/api/types'
 import { api } from '@/api/client'
+import QRCode from 'qrcode'
 
 const { t } = useI18n()
 const servers = useServersStore()
@@ -311,6 +342,72 @@ async function onImport() {
 function onEdit(srv: Server) {
   Object.assign(editForm, srv)
   showEdit.value = true
+}
+
+const showExport = ref(false)
+const exportText = ref('')
+const exportLoading = ref(false)
+const showQR = ref(false)
+const qrLoading = ref(false)
+const qrDataUrl = ref('')
+
+async function onExportSelected() {
+  if (!servers.selectedId) return
+  exportText.value = ''
+  showQR.value = false
+  qrDataUrl.value = ''
+  exportLoading.value = true
+  showExport.value = true
+  try {
+    const result = await api.exportServers([servers.selectedId])
+    exportText.value = result?.text || ''
+  } catch (e: any) {
+    ElMessage.error('导出失败：' + (e.message || '未知错误'))
+    showExport.value = false
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+async function onCopyExport() {
+  if (!exportText.value) return
+  try {
+    await navigator.clipboard.writeText(exportText.value)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+async function onShowQR() {
+  if (!exportText.value) return
+  showQR.value = true
+  qrLoading.value = true
+  qrDataUrl.value = ''
+  try {
+    qrDataUrl.value = await QRCode.toDataURL(exportText.value, {
+      width: 256,
+      margin: 2,
+      color: { dark: '#000000', light: '#ffffff' },
+    })
+  } catch (e) {
+    console.error('QR generation failed:', e)
+    qrDataUrl.value = ''
+  } finally {
+    qrLoading.value = false
+  }
+}
+
+async function onQuickExport(srv: Server) {
+  try {
+    const result = await api.exportServers([srv.id])
+    const text = result?.text
+    if (!text) { ElMessage.warning('无法生成分享链接'); return }
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(`已复制 ${srv.name} 的分享链接`)
+  } catch (e: any) {
+    ElMessage.error('导出失败：' + (e.message || '未知错误'))
+  }
 }
 
 async function onSaveEdit() {
