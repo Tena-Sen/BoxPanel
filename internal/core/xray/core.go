@@ -110,24 +110,38 @@ func (c *Core) BuildConfig(_ context.Context, req core.BuildRequest, outPath str
 
 	// 4. Routing
 	var rules []map[string]any
-	// Private IP -> direct
-	rules = append(rules, map[string]any{
-		"type":        "field",
-		"outboundTag": "direct",
-		"ip":          []string{"geoip:private"},
-	})
-	// CN sites -> direct
-	rules = append(rules, map[string]any{
-		"type":        "field",
-		"outboundTag": "direct",
-		"domain":      []string{"geosite:cn"},
-	})
-	// CN IPs -> direct
-	rules = append(rules, map[string]any{
-		"type":        "field",
-		"outboundTag": "direct",
-		"ip":          []string{"geoip:cn"},
-	})
+
+	// Check if geodata files exist in Xray's working directory.
+	// Xray needs geoip.dat and geosite.dat for geoip:/geosite: rules.
+	// If missing, skip geodata-based rules to avoid startup failure.
+	exeDir := filepath.Dir(c.exePath)
+	hasGeoip := fileExists(filepath.Join(exeDir, "geoip.dat"))
+	hasGeosite := fileExists(filepath.Join(exeDir, "geosite.dat"))
+
+	// Private IP -> direct (requires geoip.dat)
+	if hasGeoip {
+		rules = append(rules, map[string]any{
+			"type":        "field",
+			"outboundTag": "direct",
+			"ip":          []string{"geoip:private"},
+		})
+	}
+	// CN sites -> direct (requires geosite.dat)
+	if hasGeosite {
+		rules = append(rules, map[string]any{
+			"type":        "field",
+			"outboundTag": "direct",
+			"domain":      []string{"geosite:cn"},
+		})
+	}
+	// CN IPs -> direct (requires geoip.dat)
+	if hasGeoip {
+		rules = append(rules, map[string]any{
+			"type":        "field",
+			"outboundTag": "direct",
+			"ip":          []string{"geoip:cn"},
+		})
+	}
 	// User-defined routing rules
 	for _, r := range req.RoutingRules {
 		if rule := compileXrayRule(r); rule != nil {
@@ -497,4 +511,9 @@ func orDefault(v, def int) int {
 		return v
 	}
 	return def
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

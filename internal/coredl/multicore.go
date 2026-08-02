@@ -273,6 +273,7 @@ func (m *MultiCoreDownloader) downloadFile(ctx context.Context, url, dst string,
 }
 
 // extractCore unzips and locates the core executable.
+// For Xray, also extracts geoip.dat and geosite.dat which are required for routing rules.
 func (m *MultiCoreDownloader) extractCore(zipPath string, repo CoreRepo, version string) (string, error) {
 	targetDir := filepath.Join(m.binDir, repo.Kind, version)
 	_ = os.MkdirAll(targetDir, 0o755)
@@ -288,6 +289,10 @@ func (m *MultiCoreDownloader) extractCore(zipPath string, repo CoreRepo, version
 		exeName += ".exe"
 	}
 
+	// Xray needs geoip.dat and geosite.dat in its working directory
+	needGeodata := repo.Kind == models.CoreKindXray
+	geodataFiles := map[string]bool{"geoip.dat": true, "geosite.dat": true}
+
 	var foundPath string
 	for _, f := range r.File {
 		base := filepath.Base(f.Name)
@@ -298,7 +303,14 @@ func (m *MultiCoreDownloader) extractCore(zipPath string, repo CoreRepo, version
 			}
 			_ = os.Chmod(outPath, 0o755)
 			foundPath = outPath
-			break
+		} else if needGeodata && geodataFiles[base] {
+			outPath := filepath.Join(targetDir, base)
+			if err := extractCoreFile(f, outPath); err != nil {
+				slog.Warn("failed to extract geodata file, routing rules using geodata may not work",
+					"file", base, "error", err)
+			} else {
+				slog.Info("extracted geodata for Xray", "file", base, "size", f.UncompressedSize64)
+			}
 		}
 	}
 	if foundPath == "" {

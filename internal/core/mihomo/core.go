@@ -25,6 +25,8 @@ import (
 // Core implements core.Core for mihomo.
 type Core struct {
 	exePath     string
+	cmd         *exec.Cmd
+	pid         int
 	clash       *clashapi.Client
 	clashHost   string
 	clashPort   int
@@ -153,16 +155,35 @@ func (c *Core) Start(_ context.Context, configPath string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start mihomo: %w", err)
 	}
+	c.cmd = cmd
+	c.pid = cmd.Process.Pid
+
+	// Reap process in background to prevent zombies
+	go func() { _ = cmd.Wait() }()
 	return nil
 }
 
 func (c *Core) Stop() error {
-	killExistingMihomo()
+	if c.cmd != nil && c.cmd.Process != nil {
+		// Try graceful stop first
+		_ = c.cmd.Process.Signal(syscall.Signal(0))
+		killExistingMihomo()
+		c.cmd = nil
+		c.pid = 0
+	} else {
+		killExistingMihomo()
+	}
 	return nil
 }
 
-func (c *Core) IsRunning() bool { return false }
-func (c *Core) PID() int        { return 0 }
+func (c *Core) IsRunning() bool {
+	if c.cmd == nil || c.cmd.Process == nil {
+		return false
+	}
+	return c.cmd.Process.Signal(syscall.Signal(0)) == nil
+}
+
+func (c *Core) PID() int { return c.pid }
 
 func (c *Core) Check(_ context.Context, configPath string) error {
 	cmd := exec.Command(c.exePath, "-t", "-f", configPath)

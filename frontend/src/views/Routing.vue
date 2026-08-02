@@ -10,11 +10,11 @@
     </div>
 
     <!-- 规则列表 -->
-    <div v-if="routing.rules.length === 0" class="card" style="text-align:center;padding:30px;">
-      <div class="muted">还没有自定义规则</div>
-      <div class="muted" style="font-size:12px;margin-top:6px;">
-        内置规则（geosite-cn 直连 / !cn 走代理）始终生效，下方表可管理额外规则。
-      </div>
+    <div v-if="routing.rules.length === 0" class="empty-state">
+      <div class="empty-icon">🛣</div>
+      <div class="empty-title">还没有自定义规则</div>
+      <div class="empty-desc">内置规则（geosite-cn 直连 / !cn 走代理）始终生效，下方可管理额外规则。</div>
+      <el-button type="primary" @click="onAddRule" style="margin-top:16px;">+ 新建规则</el-button>
     </div>
 
       <div
@@ -23,31 +23,32 @@
         class="card rule-card"
       >
         <div class="rule-card-row">
-          <div class="muted" style="width:28px;text-align:center;font-family:monospace;">{{ idx + 1 }}</div>
+          <span class="rule-idx">{{ idx + 1 }}</span>
           <el-tag :type="typeTag(r.type)" size="small">{{ typeLabel(r.type) }}</el-tag>
           <div style="flex:1;min-width:0;">
-            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:13px;">
+            <div class="rule-values">
               {{ r.values.join(', ') }}
             </div>
-            <div class="muted" style="font-size:11px;">
-              <span v-if="r.invert">非匹配 · </span>{{ r.outbound }}
+            <div class="rule-outbound">
+              <span v-if="r.invert" class="rule-invert">非匹配 · </span>{{ r.outbound }}
             </div>
           </div>
           <div class="rule-card-actions">
-            <el-button size="small" :disabled="idx === 0" @click="routing.moveRule(r.id, 'up')">↑</el-button>
-            <el-button size="small" :disabled="idx === routing.rules.length - 1" @click="routing.moveRule(r.id, 'down')">↓</el-button>
-            <el-button size="small" @click="onEditRule(r)">✎</el-button>
-            <el-button size="small" type="danger" @click="onDeleteRule(r)">✕</el-button>
+            <el-button size="small" text :disabled="idx === 0" @click="routing.moveRule(r.id, 'up')">↑</el-button>
+            <el-button size="small" text :disabled="idx === routing.rules.length - 1" @click="routing.moveRule(r.id, 'down')">↓</el-button>
+            <el-button size="small" text @click="onEditRule(r)">✎</el-button>
+            <el-button size="small" text type="danger" @click="onDeleteRule(r)">✕</el-button>
           </div>
         </div>
       </div>
 
     <!-- 规则集 -->
     <div class="toolbar" style="margin-top:24px;">
-      <h3 style="margin:0;font-size:16px;">规则集（GeoSite / GeoIP）</h3>
-      <el-button size="small" @click="routing.refreshAll()">↻ 全部刷新</el-button>
-      <el-button size="small" @click="onAddBuiltin">+ 添加内置源</el-button>
-      <el-button size="small" @click="onAddCustom">+ 自定义 URL</el-button>
+      <h3 style="margin:0;font-size:16px;font-weight:600;">规则集（GeoSite / GeoIP）</h3>
+      <div class="spacer"></div>
+      <el-button size="small" plain @click="routing.refreshAll()">↻ 全部刷新</el-button>
+      <el-button size="small" plain @click="onAddBuiltin">+ 添加内置源</el-button>
+      <el-button size="small" plain @click="onAddCustom">+ 自定义 URL</el-button>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="table-wrap">
@@ -91,8 +92,8 @@
       </div>
     </div>
 
-    <div class="muted" style="margin-top:12px;font-size:12px;">
-      💡 修改规则后需重启核心生效。规则集的启用/禁用也会影响内置路由。
+    <div class="hint-bar">
+      修改规则后需重启核心生效。规则集的启用/禁用也会影响内置路由。
     </div>
 
     <!-- 规则编辑对话框 -->
@@ -387,20 +388,86 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.empty-desc {
+  font-size: 13px;
+  color: var(--text-mute);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+/* Rule card */
 .rule-card {
   margin-bottom: 8px;
+  padding: 14px 18px;
+  transition: all var(--transition);
+}
+.rule-card:hover {
+  box-shadow: var(--shadow);
 }
 .rule-card-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
+.rule-idx {
+  width: 28px;
+  text-align: center;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text-mute);
+  flex-shrink: 0;
+}
+.rule-values {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+}
+.rule-outbound {
+  font-size: 11px;
+  color: var(--text-mute);
+  margin-top: 2px;
+}
+.rule-invert {
+  color: var(--yellow);
+  font-weight: 500;
+}
 .rule-card-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
 }
+.hint-bar {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-mute);
+  padding: 8px 12px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
 @media (max-width: 768px) {
   .toolbar { flex-wrap: wrap; }
   .rule-card-row {

@@ -23,6 +23,8 @@ import (
 // Core implements core.Core for Hysteria2.
 type Core struct {
 	exePath string
+	cmd     *exec.Cmd
+	pid     int
 }
 
 // New creates a Hysteria2 Core adapter.
@@ -123,16 +125,34 @@ func (c *Core) Start(_ context.Context, configPath string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start hysteria2: %w", err)
 	}
+	c.cmd = cmd
+	c.pid = cmd.Process.Pid
+
+	// Reap process in background to prevent zombies
+	go func() { _ = cmd.Wait() }()
 	return nil
 }
 
 func (c *Core) Stop() error {
-	killExistingHysteria2()
+	if c.cmd != nil && c.cmd.Process != nil {
+		_ = c.cmd.Process.Signal(syscall.Signal(0))
+		killExistingHysteria2()
+		c.cmd = nil
+		c.pid = 0
+	} else {
+		killExistingHysteria2()
+	}
 	return nil
 }
 
-func (c *Core) IsRunning() bool { return false }
-func (c *Core) PID() int        { return 0 }
+func (c *Core) IsRunning() bool {
+	if c.cmd == nil || c.cmd.Process == nil {
+		return false
+	}
+	return c.cmd.Process.Signal(syscall.Signal(0)) == nil
+}
+
+func (c *Core) PID() int { return c.pid }
 
 func (c *Core) Check(_ context.Context, configPath string) error {
 	// Hysteria2 doesn't have a built-in config test, just verify the file is valid JSON

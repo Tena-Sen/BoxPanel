@@ -208,7 +208,8 @@ func (r *Runner) Check(configPath string) error {
 	return nil
 }
 
-// killExistingSingBox kills any leftover sing-box process (best-effort).
+// killExistingSingBox kills any leftover sing-box process (best-effort)
+// and waits briefly for the port to be released.
 func killExistingSingBox() {
 	name := config.SingBoxExeName()
 	switch runtime.GOOS {
@@ -217,6 +218,10 @@ func killExistingSingBox() {
 	default:
 		_ = exec.Command("pkill", "-f", "sing-box").Run()
 	}
+	// Give the OS time to release the TCP port after process termination.
+	// Without this delay, a new process may fail with "address already in use"
+	// because the old process's port is still in TIME_WAIT.
+	time.Sleep(300 * time.Millisecond)
 }
 
 // killProcessTree kills a process and its children.

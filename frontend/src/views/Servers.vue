@@ -24,9 +24,10 @@
       <span class="muted" style="margin-left:8px;">{{ filteredServers.length }} / {{ servers.servers.length }}</span>
     </div>
 
-    <div v-if="servers.servers.length === 0" class="card" style="text-align:center;padding:40px;">
-      <div class="muted" style="margin-bottom:12px;">{{ t('servers.empty') }}</div>
-      <el-button type="primary" @click="showImport = true">{{ t('servers.import') }}</el-button>
+    <div v-if="servers.servers.length === 0" class="empty-state">
+      <div class="empty-icon">🌐</div>
+      <div class="empty-title">{{ t('servers.empty') }}</div>
+      <el-button type="primary" @click="showImport = true" style="margin-top:16px;">📥 {{ t('servers.import') }}</el-button>
     </div>
 
     <div
@@ -447,6 +448,24 @@ async function onSaveEdit() {
 }
 .proto-filter {
   width: 130px;
+}
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
 }
 @media (max-width: 768px) {
   .server-card {

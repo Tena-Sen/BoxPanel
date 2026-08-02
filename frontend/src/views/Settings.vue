@@ -4,11 +4,14 @@
 
     <el-row :gutter="16">
       <el-col :xs="24" :sm="12">
-        <div class="card">
-          <div style="font-weight:600;margin-bottom:12px;">{{ t('settings.general') }}</div>
-          <el-form :model="form" label-width="160px" label-position="left">
+        <div class="card settings-section">
+          <div class="section-header">
+            <span class="section-icon" style="background:var(--accent-soft);color:var(--accent);">⚙</span>
+            <span class="section-title">{{ t('settings.general') }}</span>
+          </div>
+          <el-form :model="form" label-width="160px" label-position="left" class="settings-form">
             <el-form-item :label="t('settings.theme')">
-              <el-radio-group v-model="form.theme">
+              <el-radio-group v-model="form.theme" class="theme-radio">
                 <el-radio value="dark">☾ {{ t('settings.dark') }}</el-radio>
                 <el-radio value="light">☀ {{ t('settings.light') }}</el-radio>
               </el-radio-group>
@@ -27,9 +30,12 @@
       </el-col>
 
       <el-col :xs="24" :sm="12">
-        <div class="card">
-          <div style="font-weight:600;margin-bottom:12px;">{{ t('settings.network') }}</div>
-          <el-form :model="form" label-width="160px" label-position="left">
+        <div class="card settings-section">
+          <div class="section-header">
+            <span class="section-icon" style="background:var(--cyan-soft);color:var(--cyan);">⬡</span>
+            <span class="section-title">{{ t('settings.network') }}</span>
+          </div>
+          <el-form :model="form" label-width="160px" label-position="left" class="settings-form">
             <el-form-item :label="t('settings.listenPort')">
               <el-input-number v-model="form.listen_port" :min="1" :max="65535" />
             </el-form-item>
@@ -48,15 +54,16 @@
     </el-row>
 
     <!-- 内核管理 -->
-    <div class="card" style="margin-top:16px;">
-      <div class="toolbar" style="margin-bottom:12px;">
-        <span style="font-weight:600;">内核管理</span>
-        <el-tag v-if="activeCore" size="small" type="success">当前：{{ kindLabel(activeCore.kind) }} {{ activeCore?.label }} ({{ activeCore?.version }})</el-tag>
+    <div class="card settings-section" style="margin-top:16px;">
+      <div class="section-header" style="margin-bottom:16px;">
+        <span class="section-icon" style="background:var(--purple-soft);color:var(--purple);">⬢</span>
+        <span class="section-title">内核管理</span>
+        <el-tag v-if="activeCore" size="small" type="success" class="active-core-tag">当前：{{ kindLabel(activeCore.kind) }} {{ activeCore?.label }} ({{ activeCore?.version }})</el-tag>
         <div class="spacer"></div>
-        <el-button size="small" type="primary" @click="onAutoMatch" :loading="autoMatchLoading">自动匹配</el-button>
+        <el-button size="small" type="primary" plain @click="onAutoMatch" :loading="autoMatchLoading">⬡ 自动匹配</el-button>
         <el-dropdown size="small" @command="onDownloadCoreKind">
-          <el-button size="small">
-            从 GitHub 下载 ▾
+          <el-button size="small" plain>
+            ⬇ 从 GitHub 下载 ▾
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
@@ -67,7 +74,7 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button size="small" @click="showAddCore = true">+ 手动添加</el-button>
+        <el-button size="small" plain @click="showAddCore = true">+ 手动添加</el-button>
       </div>
       <div class="table-wrap">
       <el-table :data="cores" stripe>
@@ -119,14 +126,12 @@
         <div class="about-logo">BP</div>
         <div>
           <div class="about-name">BoxPanel</div>
-          <div class="about-ver">v{{ version }}</div>
+          <div class="about-ver">v{{ version }} · Go + Vue 3 + Multi-Core</div>
         </div>
       </div>
-      <div class="about-meta">
-        <span class="muted">Go + Vue 3 + Multi-Core</span>
-        <a class="about-link" href="https://github.com/Tena-Sen/BoxPanel" target="_blank" rel="noopener">GitHub</a>
-      </div>
       <div class="spacer"></div>
+      <a class="about-link" href="https://github.com/Tena-Sen/BoxPanel" target="_blank" rel="noopener">GitHub ↗</a>
+      <div style="width:1px;height:28px;background:var(--border);margin:0 4px;"></div>
       <el-button type="primary" @click="onSave">{{ t('settings.save') }}</el-button>
     </div>
 
@@ -186,25 +191,22 @@
     </el-dialog>
 
     <!-- 下载进度对话框 -->
-    <el-dialog v-model="showProgress" title="下载中" width="500px" :close-on-click-modal="false" :show-close="false">
-      <div v-if="dlProgress">
-        <div style="margin-bottom:8px;">下载 {{ dlProgress.version }}</div>
-        <div style="margin-bottom:8px;font-family:monospace;color:var(--text-mute);font-size:12px;">
-          {{ stageText(dlProgress.stage) }}
-          <span v-if="dlProgress.source"> · via {{ dlProgress.source }}</span>
-          <el-tag v-if="dlProgress.resumed" size="small" type="warning" style="margin-left:4px;">断点续传</el-tag>
-        </div>
+    <el-dialog v-model="showProgress" :title="null" width="420px" :close-on-click-modal="false" :show-close="false">
+      <div class="dl-content">
+        <div class="dl-icon">{{ dlProgress?.stage === 'done' ? '✓' : '⬇' }}</div>
+        <div class="dl-title">{{ dlProgress?.stage === 'done' ? '下载完成' : `下载 ${kindLabel(dlKind)}` }}</div>
+        <div class="dl-stage">{{ stageText(dlProgress?.stage) }}</div>
         <el-progress
+          v-if="dlProgress"
           :percentage="dlProgress.pct || 0"
+          :stroke-width="8"
           :status="dlProgress.stage === 'error' ? 'exception' : (dlProgress.stage === 'done' ? 'success' : '')"
+          :show-text="true"
         />
-        <div v-if="dlProgress.error" style="margin-top:12px;color:var(--red);font-size:12px;">
-          {{ dlProgress.error }}
-        </div>
+        <div v-if="dlProgress?.error" class="dl-error">{{ dlProgress.error }}</div>
       </div>
       <template #footer>
         <el-button v-if="dlProgress?.stage === 'done' || dlProgress?.stage === 'error'" type="primary" @click="closeProgress">关闭</el-button>
-        <el-button v-else @click="cancelWatch">取消监听</el-button>
       </template>
     </el-dialog>
   </div>
@@ -464,6 +466,31 @@ function kindTagType(kind: string) {
 </script>
 
 <style scoped>
+/* Settings section cards */
+.settings-section {
+  position: relative;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.section-icon {
+  width: 32px; height: 32px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.section-title {
+  font-weight: 600; font-size: 15px; color: var(--text);
+}
+.active-core-tag {
+  margin-left: 8px;
+}
+.settings-form :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
 /* About card */
 .about-card {
   display: flex;
@@ -476,40 +503,75 @@ function kindTagType(kind: string) {
   gap: 12px;
 }
 .about-logo {
-  width: 40px; height: 40px; border-radius: 8px;
-  background: var(--accent); color: var(--bg);
+  width: 44px; height: 44px; border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  color: #fff;
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 14px;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(108, 140, 255, 0.3);
 }
 .about-name {
-  font-weight: 600; font-size: 16px; color: var(--text);
+  font-weight: 700; font-size: 17px; color: var(--text);
   line-height: 1.2;
 }
 .about-ver {
   font-size: 12px; color: var(--text-mute);
-}
-.about-meta {
-  display: flex; align-items: center; gap: 12px;
-  font-size: 13px;
+  margin-top: 2px;
 }
 .about-link {
   color: var(--accent);
   text-decoration: none;
-  font-size: 12px;
-  padding: 2px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 12px;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  transition: border-color 0.15s;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
 }
 .about-link:hover {
   border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Download progress dialog */
+.dl-content {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+.dl-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+  line-height: 1;
+}
+.dl-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.dl-stage {
+  font-size: 13px;
+  color: var(--text-mute);
+  margin-bottom: 16px;
+}
+.dl-error {
+  margin-top: 12px;
+  color: var(--red);
+  font-size: 12px;
+  text-align: left;
 }
 
 @media (max-width: 768px) {
   :deep(.el-form-item__label) { text-align: left; }
-  .toolbar { flex-wrap: wrap; }
+  .section-header { flex-wrap: wrap; }
   .about-card { flex-wrap: wrap; }
-  .about-meta { width: 100%; }
+  .settings-form :deep(.el-form-item) {
+    flex-direction: column;
+  }
+  .settings-form :deep(.el-form-item__label) {
+    text-align: left;
+    padding-bottom: 2px;
+  }
 }
 </style>

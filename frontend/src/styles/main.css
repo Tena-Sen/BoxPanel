@@ -301,11 +301,22 @@ html.light .el-table {
 .el-tag {
   border-radius: 12px !important;
   font-weight: 500;
+  font-size: 12px !important;
 }
 
 /* ---- Switch enhancements ---- */
 .el-switch {
   --el-switch-on-color: var(--accent);
+  --el-switch-off-color: var(--border);
+}
+.el-switch.is-checked .el-switch__core {
+  box-shadow: 0 2px 6px rgba(108, 140, 255, 0.3);
+}
+.el-switch__label {
+  color: var(--text-mute) !important;
+}
+.el-switch__label.is-active {
+  color: var(--accent) !important;
 }
 
 /* ---- Input enhancements ---- */
@@ -344,27 +355,134 @@ html.light .el-table {
 .el-checkbox__label {
   color: var(--text) !important;
 }
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
 .el-form-item__label {
   color: var(--text-mute) !important;
 }
 .el-divider {
   border-color: var(--border) !important;
+  margin: 14px 0 !important;
 }
 .el-progress-bar__outer {
   background-color: var(--bg-mute) !important;
   border-radius: 100px !important;
 }
 
+/* ---- Table row transition ---- */
+.el-table__row {
+  transition: background-color var(--transition);
+}
+
+/* ---- Tooltip ---- */
+.el-tooltip__trigger {
+  outline: none;
+}
+
 /* ---- Segmented ---- */
 .el-segmented {
   --el-segmented-bg-color: var(--bg-mute) !important;
-  --el-segmented-item-selected-color: var(--accent) !important;
+  --el-segmented-item-selected-color: #fff !important;
+  --el-segmented-item-selected-bg-color: var(--accent) !important;
   border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--border) !important;
+}
+.el-segmented__item {
+  color: var(--text) !important;
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500;
+  transition: all var(--transition) !important;
+}
+.el-segmented__item.is-selected {
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(108, 140, 255, 0.3);
+}
+.el-segmented__item:not(.is-selected):hover {
+  color: var(--accent) !important;
+  background: var(--accent-soft) !important;
 }
 
 /* ---- Alert ---- */
 .el-alert {
   border-radius: var(--radius) !important;
+}
+
+/* ---- Dialog enhancements ---- */
+.el-dialog {
+  --el-dialog-bg-color: var(--bg-soft);
+  --el-dialog-title-font-size: 16px;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.el-dialog__header {
+  padding: 20px 24px 16px !important;
+  border-bottom: 1px solid var(--border);
+  margin-right: 0 !important;
+}
+.el-dialog__body {
+  padding: 20px 24px !important;
+}
+.el-dialog__footer {
+  padding: 16px 24px 20px !important;
+  border-top: 1px solid var(--border);
+  text-align: right;
+}
+/* Dialog overlay - stronger mask */
+.el-overlay {
+  background-color: rgba(0, 0, 0, 0.55) !important;
+  backdrop-filter: blur(2px);
+}
+
+/* ---- Message Box ---- */
+.el-message-box {
+  border-radius: var(--radius-lg) !important;
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+.el-message-box__content {
+  color: var(--text) !important;
+}
+
+/* ---- Radio Group ---- */
+.el-radio-group {
+  gap: 0;
+}
+.el-radio-button__inner {
+  border-radius: var(--radius-sm) !important;
+}
+.el-radio-button__original-radio:checked + .el-radio-button__inner {
+  background-color: var(--accent) !important;
+  border-color: var(--accent) !important;
+  box-shadow: -1px 0 0 0 var(--accent) !important;
+  color: #fff !important;
+}
+
+/* ---- Radio (standalone) ---- */
+.el-radio__input.is-checked .el-radio__inner {
+  background-color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+.el-radio__input.is-checked + .el-radio__label {
+  color: var(--accent) !important;
+}
+
+/* ---- Page transition ---- */
+.page-fade-enter-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.page-fade-leave-active {
+  transition: opacity 0.12s ease;
+}
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.page-fade-leave-to {
+  opacity: 0;
 }
 
 /* ---- Mobile responsive ---- */

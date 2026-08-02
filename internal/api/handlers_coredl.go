@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,7 +13,9 @@ import (
 
 	"boxpanel/internal/compat"
 	"boxpanel/internal/coredl"
+	"boxpanel/internal/coreinfo"
 	"boxpanel/internal/models"
+	"boxpanel/internal/nodevalidator"
 )
 
 // 进度缓存（按版本）
@@ -363,7 +366,9 @@ func coreRegFromCache(version, path string) *models.CoreConfig {
 	}
 }
 
-// 兼容老接口：POST /api/cores/auto-match
+// handleAutoMatchCore finds or downloads a compatible core for the given server.
+// Uses NodeValidator to determine the correct core kind (e.g. Xray for xhttp transport),
+// rather than always defaulting to sing-box.
 func (s *APIServer) handleAutoMatchCore(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ServerID string `json:"server_id"`
@@ -381,78 +386,137 @@ func (s *APIServer) handleAutoMatchCore(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// 1. local cores with compatible kernel?
+	// Determine the required core kind via NodeValidator.
+	// Find which core kinds are compatible with this server.
+	var compatibleKinds []string
+	for _, kind := range []string{models.CoreKindSingBox, models.CoreKindXray, models.CoreKindMihomo, models.CoreKindHysteria2} {
+		vr := nodevalidator.Validate(*srv, kind)
+		if vr.Valid {
+			compatibleKinds = append(compatibleKinds, kind)
+		}
+	}
+
+	if len(compatibleKinds) == 0 {
+		writeError(w, 400, "没有兼容的内核类型支持此节点协议/传输组合")
+		return
+	}
+
+	// 1. Check if any already-configured core is compatible
 	for _, c := range st.Cores {
-		res := compat.CheckServer(*srv, c.Version, c.Kind)
-		if res.Level == compat.OK {
-			st.ActiveCoreID = c.ID
-			_ = s.store.SaveSettings(ctx, st)
-			s.mu.Lock()
-			s.settings = st
-			s.mu.Unlock()
-			writeJSON(w, 200, map[string]any{
-				"action":  "activate_existing",
-				"core_id": c.ID,
-				"version": c.Version,
-			})
-			return
+		kind := c.Kind
+		if kind == "" {
+			kind = models.CoreKindSingBox
+		}
+		for _, ck := range compatibleKinds {
+			if kind == ck {
+				st.ActiveCoreID = c.ID
+				_ = s.store.SaveSettings(ctx, st)
+				s.mu.Lock()
+				s.settings = st
+				s.mu.Unlock()
+				writeJSON(w, 200, map[string]any{
+					"action":  "activate_existing",
+					"core_id": c.ID,
+					"version": c.Version,
+					"kind":    kind,
+				})
+				return
+			}
 		}
 	}
 
-	// 2. local cache pool with compatible kernel?
+	// 2. Check local cache pool for any compatible core kind
 	for _, cached := range s.coreCache.List() {
-		res := compat.CheckServer(*srv, cached.Version, models.CoreKindSingBox)
-		if res.Level == compat.OK {
-			core := coreRegFromCache(cached.Version, cached.Path)
-			st.Cores = append(st.Cores, *core)
-			st.ActiveCoreID = core.ID
-			_ = s.store.SaveSettings(ctx, st)
-			s.mu.Lock()
-			s.settings = st
-			s.mu.Unlock()
-			writeJSON(w, 200, map[string]any{
-				"action":  "activate_from_cache",
-				"version": cached.Version,
-			})
-			return
+		// cached versions are sing-box only; check if sing-box is compatible
+		for _, ck := range compatibleKinds {
+			if ck == models.CoreKindSingBox {
+				core := coreRegFromCache(cached.Version, cached.Path)
+				st.Cores = append(st.Cores, *core)
+				st.ActiveCoreID = core.ID
+				_ = s.store.SaveSettings(ctx, st)
+				s.mu.Lock()
+				s.settings = st
+				s.mu.Unlock()
+				writeJSON(w, 200, map[string]any{
+					"action":  "activate_from_cache",
+					"version": cached.Version,
+					"kind":    models.CoreKindSingBox,
+				})
+				return
+			}
 		}
 	}
 
-	// 3. recommend download
-	probe := compat.CheckServer(*srv, "", models.CoreKindSingBox)
-	minVer := probe.MinVersion
-	if minVer == "" {
-		minVer = "1.1.0"
-	}
-	suggested, err := s.coredl.SuggestVersionForServer(ctx, minVer)
-	if err != nil {
-		writeError(w, 500, "无法找到合适版本: "+err.Error())
-		return
+	// 3. Download the best compatible core kind
+	// Prefer sing-box if compatible, otherwise use the first compatible kind
+	targetKind := compatibleKinds[0]
+	for _, ck := range compatibleKinds {
+		if ck == models.CoreKindSingBox {
+			targetKind = ck
+			break
+		}
 	}
 
-	// 4. 下载并激活
-	core, err := s.coredl.DownloadAndCache(ctx, suggested, st.CustomDownloadMirrors,
-		"v"+suggested, false, s.coreCache, func(p coredl.Progress) {
-			dlMu.Lock()
-			snap := p
-			dlProgress[suggested] = &snap
-			dlMu.Unlock()
+	info := coreinfo.GetInfo(targetKind)
+	slog.Info("auto-match: downloading compatible core",
+		"kind", targetKind, "name", info.Name, "server", srv.Name,
+		"protocol", srv.Protocol, "transport", srv.TransportType)
+
+	if targetKind == models.CoreKindSingBox {
+		// Use the sing-box specific downloader
+		probe := compat.CheckServer(*srv, "", models.CoreKindSingBox)
+		minVer := probe.MinVersion
+		if minVer == "" {
+			minVer = "1.1.0"
+		}
+		suggested, err := s.coredl.SuggestVersionForServer(ctx, minVer)
+		if err != nil {
+			writeError(w, 500, "无法找到合适版本: "+err.Error())
+			return
+		}
+		core, err := s.coredl.DownloadAndCache(ctx, suggested, st.CustomDownloadMirrors,
+			"v"+suggested, false, s.coreCache, func(p coredl.Progress) {
+				dlMu.Lock()
+				snap := p
+				dlProgress[suggested] = &snap
+				dlMu.Unlock()
+			})
+		if err != nil {
+			writeError(w, 500, "下载失败: "+err.Error())
+			return
+		}
+		st.Cores = append(st.Cores, *core)
+		st.ActiveCoreID = core.ID
+		_ = s.store.SaveSettings(ctx, st)
+		s.mu.Lock()
+		s.settings = st
+		s.mu.Unlock()
+		writeJSON(w, 200, map[string]any{
+			"action":  "downloaded",
+			"version": suggested,
+			"path":    core.Path,
+			"kind":    models.CoreKindSingBox,
 		})
-	if err != nil {
-		writeError(w, 500, "下载失败: "+err.Error())
-		return
+	} else {
+		// Use the multi-core downloader (Xray, mihomo, Hysteria2)
+		coreCfg, err := s.downloadLatestCore(ctx, targetKind, st)
+		if err != nil {
+			writeError(w, 500, fmt.Sprintf("下载 %s 失败: %v", info.Name, err))
+			return
+		}
+		st.Cores = append(st.Cores, *coreCfg)
+		st.ActiveCoreID = coreCfg.ID
+		_ = s.store.SaveSettings(ctx, st)
+		s.mu.Lock()
+		s.settings = st
+		s.mu.Unlock()
+		writeJSON(w, 200, map[string]any{
+			"action":  "downloaded",
+			"version": coreCfg.Version,
+			"path":    coreCfg.Path,
+			"kind":    targetKind,
+		})
 	}
-	st.Cores = append(st.Cores, *core)
-	st.ActiveCoreID = core.ID
-	_ = s.store.SaveSettings(ctx, st)
-	s.mu.Lock()
-	s.settings = st
-	s.mu.Unlock()
-	writeJSON(w, 200, map[string]any{
-		"action":  "downloaded",
-		"version": suggested,
-		"path":    core.Path,
-	})
 }
 
 func isPrereleaseTag(tag string) bool {

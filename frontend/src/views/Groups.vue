@@ -23,52 +23,51 @@
       <el-tag v-else type="success" size="small">实时可用</el-tag>
     </div>
 
-    <div v-if="groups.groups.length === 0" class="card" style="text-align:center;padding:40px;">
-      <div class="muted" style="margin-bottom:12px;">还没有分组</div>
-      <el-button type="primary" @click="onCreate">创建第一个分组</el-button>
-      <div class="muted" style="margin-top:12px;font-size:12px;">
-        提示：分组是 v2rayN 风格的核心能力。在分组内可手动切换或自动选最低延迟。
-      </div>
+    <!-- 空状态 -->
+    <div v-if="groups.groups.length === 0" class="empty-state">
+      <div class="empty-icon">📂</div>
+      <div class="empty-title">还没有分组</div>
+      <div class="empty-desc">分组是 v2rayN 风格的核心能力。在分组内可手动切换或自动选最低延迟。</div>
+      <el-button type="primary" @click="onCreate" style="margin-top:16px;">+ 创建第一个分组</el-button>
     </div>
 
-    <div v-for="g in groups.groups" :key="g.id" class="card" style="margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-        <span style="font-weight:600;font-size:16px;">{{ g.name }}</span>
+    <!-- 分组列表 -->
+    <div v-for="g in groups.groups" :key="g.id" class="card group-card">
+      <div class="group-header">
+        <span class="group-name">{{ g.name }}</span>
         <el-tag size="small" :type="typeTag(g.type)">{{ typeLabel(g.type) }}</el-tag>
-        <span v-if="g.url" class="muted" style="font-size:12px;">{{ g.url }}</span>
+        <span v-if="g.url" class="muted" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px;">{{ g.url }}</span>
         <div class="spacer"></div>
-        <el-button size="small" @click="onEdit(g)">编辑</el-button>
-        <el-button size="small" type="danger" @click="onDelete(g)">删除</el-button>
+        <el-button size="small" text @click="onEdit(g)">✎ 编辑</el-button>
+        <el-button size="small" text type="danger" @click="onDelete(g)">✕ 删除</el-button>
       </div>
 
-      <div v-if="g.server_ids.length === 0" class="muted" style="padding:12px;">空分组 - 点编辑添加节点</div>
-      <div v-else style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
+      <div v-if="g.server_ids.length === 0" class="empty-members">
+        <span class="muted">空分组</span>
+        <el-button size="small" link type="primary" @click="onEdit(g)" style="margin-left:8px;">添加节点</el-button>
+      </div>
+      <div v-else class="members-grid">
         <div
           v-for="sid in g.server_ids"
           :key="sid"
-          :class="['member-card', { active: groups.nowOf(groupTag(g)) === srvTag(sid) }]"
+          :class="['member-card', { active: groups.nowOf(groupTag(g)) === srvTag(sid), disabled: g.type !== 'selector' }]"
           @click="onSwitch(g, sid)"
         >
-          <div style="display:flex;align-items:center;gap:6px;">
-            <el-icon v-if="groups.nowOf(groupTag(g)) === srvTag(sid)" style="color:var(--green);">
-              <Check />
-            </el-icon>
-            <span style="flex:1;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              {{ serverName(sid) }}
-            </span>
+          <div class="member-top">
+            <span v-if="groups.nowOf(groupTag(g)) === srvTag(sid)" class="member-active-dot"></span>
+            <span class="member-name">{{ serverName(sid) }}</span>
           </div>
-          <div class="muted" style="font-size:12px;margin-top:4px;">
-            {{ serverMeta(sid) }}
-          </div>
+          <div class="member-meta">{{ serverMeta(sid) }}</div>
           <div style="margin-top:6px;">
             <LatencyBadge :ms="serverLatency(sid)" />
           </div>
         </div>
       </div>
 
-      <div v-if="g.type === 'url_test' || g.type === 'fallback'" class="muted" style="font-size:12px;margin-top:8px;">
+      <div v-if="g.type === 'url_test' || g.type === 'fallback'" class="group-hint">
         {{ g.type === 'url_test' ? '自动选择最低延迟的成员' : '按顺序尝试，第一个可用即用' }}
         <span v-if="g.interval"> · 测速间隔 {{ g.interval }}s</span>
+        <span class="hint-non-switchable">不支持手动切换</span>
       </div>
     </div>
 
@@ -204,8 +203,11 @@ async function onSave() {
 }
 
 async function onSwitch(g: Group, sid: string) {
-  // 切换节点不需要启动核心——Clash API 改 selector 立即生效
-  // 核心未运行时 Clash API 不可用，selectMember 会自然报错提示
+  // 只有 selector 类型支持手动切换
+  if (g.type !== 'selector') {
+    ElMessage.warning(`${typeLabel(g.type)}分组不支持手动切换，仅「手动选择」类型可切换`)
+    return
+  }
   await groups.selectMember(groupTag(g), srvTag(sid))
 }
 
@@ -219,23 +221,133 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.empty-desc {
+  font-size: 13px;
+  color: var(--text-mute);
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+/* Group card */
+.group-card {
+  margin-bottom: 12px;
+  transition: all var(--transition);
+}
+.group-card:hover {
+  box-shadow: var(--shadow);
+}
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.group-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--text);
+}
+.empty-members {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-mute);
+  font-size: 13px;
+  background: var(--bg-mute);
+  border-radius: var(--radius-sm);
+}
+.members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
 .member-card {
   background: var(--bg-mute);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--transition);
 }
 .member-card:hover {
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
 }
 .member-card.active {
   border-color: var(--green);
   background: color-mix(in srgb, var(--green) 8%, var(--bg-mute));
+  box-shadow: 0 0 0 1px var(--green-soft);
 }
+.member-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.member-active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  flex-shrink: 0;
+}
+.member-name {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-meta {
+  font-size: 12px;
+  color: var(--text-mute);
+  margin-top: 4px;
+}
+.group-hint {
+  font-size: 12px;
+  color: var(--text-mute);
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.hint-non-switchable {
+  color: var(--yellow);
+  font-weight: 500;
+  margin-left: 8px;
+}
+.member-card.disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.member-card.disabled:hover {
+  border-color: var(--border);
+  box-shadow: none;
+}
+
 @media (max-width: 768px) {
   .toolbar { flex-wrap: wrap; }
-  .member-card { padding: 8px; }
+  .members-grid {
+    grid-template-columns: 1fr;
+  }
+  .member-card { padding: 10px; }
+  .group-header { flex-wrap: wrap; }
 }
 </style>

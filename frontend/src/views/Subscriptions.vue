@@ -7,34 +7,51 @@
       <el-button @click="onRefreshAll">↻ {{ t('subs.refreshAll') }}</el-button>
     </div>
 
-    <div class="table-wrap">
-    <el-table :data="subs.subs" stripe>
-      <el-table-column prop="name" :label="t('subs.name')" />
-      <el-table-column prop="url" :label="t('subs.url')" show-overflow-tooltip>
-        <template #default="{ row }">
-          <a :href="row.url" target="_blank" rel="noopener">{{ row.url }}</a>
-        </template>
-      </el-table-column>
-      <el-table-column prop="interval_hours" :label="t('subs.interval')" width="120" />
-      <el-table-column :label="t('subs.lastRefresh')" width="180">
-        <template #default="{ row }">
-          <span class="muted">{{ row.last_refresh || '—' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="160">
-        <template #default="{ row }">
-          <el-tag v-if="row.last_status === 'ok'" type="success">{{ row.server_count || 0 }} servers</el-tag>
-          <el-tag v-else-if="row.last_status" type="danger" :title="row.last_status">error</el-tag>
-          <el-tag v-else type="info">—</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="220" align="right">
-        <template #default="{ row }">
-          <el-button size="small" @click="onRefresh(row)">↻</el-button>
-          <el-button size="small" type="danger" @click="onDelete(row)">✕</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div v-if="subs.subs.length === 0" class="empty-state">
+      <div class="empty-icon">📡</div>
+      <div class="empty-title">还没有订阅</div>
+      <div class="empty-desc">添加订阅源可自动导入和更新节点列表</div>
+      <el-button type="primary" @click="showAdd = true" style="margin-top:16px;">+ 添加订阅</el-button>
+    </div>
+
+    <div v-else class="card" style="padding:0;overflow:hidden;">
+      <div class="table-wrap">
+      <el-table :data="subs.subs" stripe>
+        <el-table-column prop="name" :label="t('subs.name')" width="160">
+          <template #default="{ row }">
+            <span style="font-weight:500;">{{ row.name }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="url" :label="t('subs.url')" show-overflow-tooltip>
+          <template #default="{ row }">
+            <a :href="row.url" target="_blank" rel="noopener" class="sub-link">{{ row.url }}</a>
+          </template>
+        </el-table-column>
+        <el-table-column prop="interval_hours" :label="t('subs.interval')" width="120" align="center">
+          <template #default="{ row }">
+            <span class="muted">{{ row.interval_hours }}h</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('subs.lastRefresh')" width="180">
+          <template #default="{ row }">
+            <span class="muted">{{ row.last_refresh || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="160" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.last_status === 'ok'" type="success" size="small">{{ row.server_count || 0 }} nodes</el-tag>
+            <el-tag v-else-if="row.last_status" type="danger" size="small" :title="row.last_status">error</el-tag>
+            <el-tag v-else type="info" size="small">—</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" align="right">
+          <template #default="{ row }">
+            <el-button size="small" text @click="onRefresh(row)">↻ 刷新</el-button>
+            <el-button size="small" text type="danger" @click="onDelete(row)">✕</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      </div>
     </div>
 
     <el-dialog v-model="showAdd" :title="t('subs.add')" width="500px">
@@ -104,6 +121,32 @@ async function onDelete(row: Subscription) {
 </script>
 
 <style scoped>
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  background: var(--bg-soft);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.empty-desc {
+  font-size: 13px;
+  color: var(--text-mute);
+}
+.sub-link {
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+}
 @media (max-width: 768px) {
   .toolbar { flex-wrap: wrap; }
 }

@@ -64,6 +64,12 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "already running")
 		return
 	}
+
+	// Ensure any previous core process is fully stopped and port released.
+	// This handles the case where the old process exited but the TCP port
+	// is still in TIME_WAIT state.
+	_ = s.coreStop()
+	time.Sleep(200 * time.Millisecond)
 	ctx := r.Context()
 	var body struct {
 		AutoFallback bool `json:"auto_fallback"`
@@ -89,13 +95,19 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 
 	// 自动补充兼容内核：如果所有已配置内核都不兼容当前节点，
 	// 自动下载兼容的内核（如 xhttp 节点需要 Xray 内核）
-	cores, downloadMsg, err := s.ensureCompatibleCore(cores, srv, st)
-	if err != nil {
-		writeError(w, 500, "自动下载兼容内核失败: "+err.Error())
-		return
+	var downloadMsg string
+	cores, dm, dlErr := s.ensureCompatibleCore(cores, srv, st)
+	if dlErr != nil {
+		// 下载失败不阻断启动 — 降级为警告，让后续流程尝试用不兼容内核启动
+		// （compat.go 兜底会将不支持的 transport 替换为 block outbound）
+		slog.Warn("auto-download compatible core failed, will try with existing cores",
+			"error", dlErr, "transport", srv.TransportType)
+		downloadMsg = "自动下载兼容内核失败: " + dlErr.Error()
+	} else if dm != "" {
+		downloadMsg = dm
 	}
 	// 刷新 settings（ensureCompatibleCore 可能已追加新内核并保存）
-	if downloadMsg != "" {
+	if dm != "" {
 		st, _ = s.store.GetSettings(ctx)
 		// 自动下载的内核已在列表末尾，重新排序让兼容内核排在前面
 		cores = candidateCores(st, srv, true)
@@ -166,8 +178,26 @@ func (s *APIServer) handleCoreStart(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// All candidates failed — build a helpful aggregated error message
+	finalError := lastAttempt.Error
+	if len(attempts) > 1 {
+		// Multiple candidates tried: summarize
+		parts := make([]string, 0, len(attempts))
+		for _, a := range attempts {
+			if a.Error != "" {
+				parts = append(parts, a.Error)
+			}
+		}
+		finalError = "所有候选内核均不兼容: " + strings.Join(parts, "; ")
+	}
+	// Add actionable suggestion
+	transport := srv.TransportType
+	if transport != "" && transport != "tcp" && transport != "raw" {
+		finalError += fmt.Sprintf("。节点传输类型 %q 需要兼容内核（如 Xray），请在设置中下载", transport)
+	}
 	writeJSON(w, 500, map[string]any{
-		"error":    lastAttempt.Error,
+		"error":    finalError,
 		"attempts": attempts,
 	})
 }
@@ -230,32 +260,21 @@ func candidateCores(st models.Settings, srv *models.Server, autoFallback bool) [
 func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st models.Settings) error {
 	ctx := context.Background()
 
-	// --- NodeValidator 前置校验（借鉴 v2rayN：排序而非硬拦截） ---
+	// --- NodeValidator 前置校验：仅警告，不硬拦截 ---
+	// 核心理念：内核启动后可以切换节点，不应因为当前节点不兼容就阻止启动。
+	// 不兼容节点的 outbound 由 compat.go 兜底替换为 block outbound，其他节点正常工作。
 	coreKind := core.Kind
 	if coreKind == "" {
 		coreKind = models.CoreKindSingBox
 	}
 	if vr := nodevalidator.Validate(srv, coreKind); !vr.Valid {
-		// Provide actionable suggestion
-		suggestion := vr.Errors[0].Action
-		errMsg := fmt.Sprintf("内核 %s (%s) 不兼容: %s", core.Label, coreKind, vr.Errors[0].Message)
-		if suggestion != "" {
-			errMsg += " — " + suggestion
+		msgs := make([]string, 0, len(vr.Errors))
+		for _, e := range vr.Errors {
+			msgs = append(msgs, e.Message)
 		}
-		// If this is a transport issue, check whether user has a compatible core configured
-		if vr.Errors[0].Code == "TRANSPORT_UNSUPPORTED" {
-			hasAltCore := false
-			for _, c := range st.Cores {
-				if c.Kind != coreKind && coreinfo.SupportsTransport(c.Kind, srv.TransportType) {
-					hasAltCore = true
-					break
-				}
-			}
-			if !hasAltCore {
-				errMsg += "（请在设置中下载并添加兼容的内核，如 Xray）"
-			}
-		}
-		return fmt.Errorf(errMsg)
+		slog.Warn("current server incompatible with core, using block outbound fallback",
+			"core", core.Label, "kind", coreKind, "server", srv.Name,
+			"errors", strings.Join(msgs, "; "))
 	}
 
 	// 确保 core.Version 有值（版本适配依赖此字段）
@@ -357,6 +376,13 @@ func (s *APIServer) startWithCore(srv models.Server, core models.CoreConfig, st 
 		if err := coreImpl.Start(ctx, target); err != nil {
 			return fmt.Errorf("start: %w", err)
 		}
+	}
+
+	// Quick check: did the process exit immediately? (e.g. port conflict)
+	// If the core crashed during startup, don't waste time on readiness probes.
+	if !s.coreIsRunning() {
+		s.coreStop()
+		return fmt.Errorf("core exited immediately (port conflict or config error)")
 	}
 
 	// 等待内核就绪：优先 SOCKS5 握手探测（借鉴 v2rayN），回退到 Clash API 探测

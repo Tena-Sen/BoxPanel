@@ -52,7 +52,7 @@
         <!-- 控制面板 -->
         <div class="card">
           <div class="card-title">内核控制</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;">
+          <div class="control-row">
             <el-button type="primary" :disabled="runtime.running" @click="onStart">
               ▶ 启动
             </el-button>
@@ -60,56 +60,68 @@
               ⏹ 停止
             </el-button>
             <el-button @click="onRestart">↻ 重启</el-button>
-            <el-checkbox v-model="autoFallback" :disabled="runtime.running" style="margin-left:8px;">
+            <el-checkbox v-model="autoFallback" :disabled="runtime.running" style="margin-left:auto;">
               自动适配
             </el-checkbox>
           </div>
-          <el-divider style="margin:12px 0;" />
+          <el-divider />
           <!-- 内核信息 -->
           <div class="info-grid">
             <span class="info-label">当前内核</span>
             <span class="info-value">
               <el-tag v-if="activeCoreKind" size="small" :type="kindTagType(activeCoreKind)">{{ kindLabel(activeCoreKind) }}</el-tag>
-              <span v-if="activeCoreVersion" class="muted" style="margin-left:4px;">v{{ activeCoreVersion }}</span>
+              <span v-if="activeCoreVersion" class="muted" style="margin-left:6px;">v{{ activeCoreVersion }}</span>
               <span v-if="!activeCoreKind" class="muted">未配置</span>
-            </span>
-            <span class="info-label">代理模式</span>
-            <span class="info-value">
-              <el-segmented v-model="currentMode" :options="modeOptions" size="small" @change="onModeChange" />
             </span>
             <span class="info-label">混合端口</span>
             <span class="info-value">{{ settings.settings?.listen_port || 20808 }}</span>
             <span class="info-label">Clash API</span>
             <span class="info-value">
-              <span v-if="runtime.clashReachable" style="color:var(--green);">可达</span>
-              <span v-else class="muted">不可达</span>
+              <span v-if="runtime.clashReachable" class="status-ok">可达</span>
+              <span v-else class="status-err">不可达</span>
             </span>
             <span v-if="state?.probe_method" class="info-label">探测方式</span>
             <span v-if="state?.probe_method" class="info-value">
               <el-tag size="small" :type="probeMethodTagType">{{ probeMethodLabel }}</el-tag>
             </span>
           </div>
-          <el-divider style="margin:12px 0;" />
+          <el-divider />
+          <!-- 代理模式 -->
+          <div class="info-grid">
+            <span class="info-label">代理模式</span>
+            <span class="info-value">
+              <div class="mode-tabs">
+                <button
+                  v-for="opt in modeOptions"
+                  :key="opt.value"
+                  :class="['mode-tab', { active: currentMode === opt.value }]"
+                  @click="onModeChange(opt.value)"
+                >{{ opt.label }}</button>
+              </div>
+            </span>
+          </div>
+          <el-divider />
           <!-- 系统代理 / 全局代理 -->
           <div class="info-grid">
             <span class="info-label">系统代理</span>
             <span class="info-value">
-              <el-tag v-if="sysProxy?.enabled" type="success" size="small">{{ sysProxy.server }}</el-tag>
-              <el-tag v-else-if="sysProxy?.supported" type="info" size="small">关闭</el-tag>
+              <template v-if="sysProxy?.enabled">
+                <el-tag type="success" size="small">{{ sysProxy.server }}</el-tag>
+                <el-button link type="danger" size="small" @click="runtime.disableSysProxy()" class="toggle-btn">关闭</el-button>
+              </template>
+              <template v-else-if="sysProxy?.supported">
+                <span class="muted">关闭</span>
+                <el-button link type="primary" size="small" @click="runtime.enableSysProxy()" class="toggle-btn">开启</el-button>
+              </template>
               <el-tag v-else type="warning" size="small">不支持</el-tag>
-              <el-button v-if="sysProxy?.supported && !sysProxy?.enabled" link type="primary" size="small" @click="runtime.enableSysProxy()" style="margin-left:6px;">开启</el-button>
-              <el-button v-if="sysProxy?.enabled" link type="danger" size="small" @click="runtime.disableSysProxy()" style="margin-left:6px;">关闭</el-button>
             </span>
             <span class="info-label">全局代理</span>
             <span class="info-value">
               <el-switch
                 :model-value="isGlobalProxy"
-                active-text="开"
-                inactive-text="关"
                 @change="(v: boolean) => v ? onGlobalProxy() : offGlobalProxy()"
-                style="--el-switch-on-color: var(--danger);"
               />
-              <span class="muted" style="margin-left:6px;font-size:12px;">全局模式 + 系统代理</span>
+              <span class="info-hint">全局模式 + 系统代理</span>
             </span>
           </div>
         </div>
@@ -191,11 +203,32 @@
         :down-total="runtime.stats.down_total || 0"
       />
     </div>
+
+    <!-- 下载兼容内核进度弹窗 -->
+    <el-dialog v-model="dlShowProgress" :title="null" width="420px" :close-on-click-modal="false" :show-close="false" class="dl-dialog">
+      <div class="dl-content">
+        <div class="dl-icon">{{ dlProgress?.stage === 'done' ? '✓' : '⬇' }}</div>
+        <div class="dl-title">{{ dlProgress?.stage === 'done' ? '下载完成' : '下载兼容内核' }}</div>
+        <div class="dl-stage">{{ stageText(dlProgress?.stage) }}</div>
+        <el-progress
+          v-if="dlProgress"
+          :percentage="dlProgress.pct || 0"
+          :stroke-width="8"
+          :status="dlProgress.stage === 'error' ? 'exception' : (dlProgress.stage === 'done' ? 'success' : '')"
+          :show-text="true"
+        />
+        <div v-if="dlProgress?.error" class="dl-error">{{ dlProgress.error }}</div>
+      </div>
+      <template #footer>
+        <el-button v-if="dlProgress?.stage === 'done'" type="primary" @click="dlCloseAndStart">启动内核</el-button>
+        <el-button v-else-if="dlProgress?.stage === 'error'" @click="dlShowProgress = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRuntimeStore } from '@/stores/runtime'
@@ -259,6 +292,69 @@ async function offGlobalProxy() {
 
 const isGlobalProxy = computed(() => {
   return currentMode.value === 'global' && sysProxy.value?.enabled
+})
+
+// ----- 下载兼容内核进度弹窗 -----
+const dlShowProgress = ref(false)
+const dlProgress = ref<any>(null)
+const dlWatchTimer = ref<any>(null)
+
+function stageText(stage: string) {
+  return {
+    starting: '准备中...',
+    fetch_releases: '获取版本列表',
+    downloading: '下载中',
+    resume_downloading: '断点续传中',
+    verifying: '校验完整性',
+    resume_verifying: '断点续传校验',
+    extracting: '解压安装',
+    done: '下载完成',
+    error: '下载失败',
+  }[stage] || stage
+}
+
+async function dlStartPolling(version: string, autoStart = false) {
+  dlProgress.value = { stage: 'starting', version }
+  dlShowProgress.value = true
+  if (dlWatchTimer.value) clearInterval(dlWatchTimer.value)
+  dlWatchTimer.value = setInterval(async () => {
+    try {
+      const p: any = await api.downloadStatus(version)
+      dlProgress.value = p
+      if (p.stage === 'done' || p.stage === 'error') {
+        clearInterval(dlWatchTimer.value)
+        dlWatchTimer.value = null
+        await settings.load()
+        await runtime.refresh()
+        // Auto-start after download completes if requested
+        if (p.stage === 'done' && autoStart) {
+          dlShowProgress.value = false
+          await doStart()
+        }
+      }
+    } catch {}
+  }, 800)
+}
+
+async function dlCloseAndStart() {
+  dlShowProgress.value = false
+  if (dlWatchTimer.value) {
+    clearInterval(dlWatchTimer.value)
+    dlWatchTimer.value = null
+  }
+  await doStart()
+}
+
+function dlCancelWatch() {
+  if (dlWatchTimer.value) {
+    clearInterval(dlWatchTimer.value)
+    dlWatchTimer.value = null
+  }
+  dlShowProgress.value = false
+}
+
+onBeforeUnmount(() => {
+  if (dlWatchTimer.value) clearInterval(dlWatchTimer.value)
 })
 
 // Active core info
@@ -371,21 +467,28 @@ async function onStart() {
             confirmButtonText: '立即下载并启动',
             cancelButtonText: '取消',
           })
-          const loading = ElMessage({ message: '正在下载兼容内核...', type: 'info', duration: 0 })
           try {
             const r = await api.autoMatchCore()
-            if (r.action === 'downloaded') {
-              ElMessage.success(`已下载 v${r.version}`)
-            } else if (r.action === 'activate_existing') {
+            if (r.action === 'activate_existing') {
+              // 本地已有兼容内核，直接激活并启动
               ElMessage.success(`已激活 v${r.version}`)
+              await settings.load()
+              await runtime.refresh()
+              await doStart()
+            } else if (r.action === 'downloaded') {
+              // 下载完成，弹出进度弹窗，下载完成后自动启动
+              dlStartPolling(r.version || '', true)
+            } else if (r.action === 'activate_from_cache') {
+              // 从缓存激活，直接启动
+              ElMessage.success(`已从缓存激活 v${r.version}`)
+              await settings.load()
+              await runtime.refresh()
+              await doStart()
+            } else {
+              ElMessage.info('action: ' + r.action)
             }
-            await settings.load()
-            await runtime.refresh()
-            await doStart()
           } catch (e: any) {
             ElMessage.error('下载失败：' + (e?.message || String(e)))
-          } finally {
-            loading.close()
           }
         } catch {
           return
@@ -500,18 +603,122 @@ function formatUptime(seconds: number): string {
   color: var(--text-mute);
   margin-top: 2px;
 }
+
+/* Control row */
+.control-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+
+/* Info grid */
 .info-grid {
   display: grid;
-  grid-template-columns: 80px 1fr;
-  gap: 8px 14px;
+  grid-template-columns: 90px 1fr;
+  gap: 10px 16px;
   font-size: 13px;
+  align-items: center;
 }
 .info-label {
   color: var(--text-mute);
+  font-size: 12px;
+  white-space: nowrap;
 }
 .info-value {
   word-break: break-all;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.info-hint {
+  font-size: 11px;
+  color: var(--text-mute);
+  margin-left: 4px;
+}
+
+/* Status colors */
+.status-ok {
+  color: var(--green);
+  font-weight: 500;
+}
+.status-err {
+  color: var(--red);
+  font-weight: 500;
+}
+
+/* Toggle button (system proxy on/off) */
+.toggle-btn {
+  margin-left: 8px;
+  font-size: 12px;
+}
+
+/* Mode tabs (replaces el-segmented) */
+.mode-tabs {
+  display: inline-flex;
+  background: var(--bg-mute);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+.mode-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-mute);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.mode-tab:hover:not(.active) {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+.mode-tab.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(108, 140, 255, 0.35);
+}
+
+/* Download progress dialog */
+.dl-content {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+.dl-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+  line-height: 1;
+}
+.dl-icon + .dl-title + .dl-stage + .el-progress .el-progress-bar__outer {
+  margin-top: 8px;
+}
+.dl-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.dl-stage {
+  font-size: 13px;
+  color: var(--text-mute);
+  margin-bottom: 16px;
+}
+.dl-error {
+  margin-top: 12px;
+  color: var(--red);
+  font-size: 12px;
+  text-align: left;
+}
+
+/* Card title */
 .card-title {
   font-size: 15px;
   font-weight: 600;
@@ -519,9 +726,20 @@ function formatUptime(seconds: number): string {
   align-items: center;
   gap: 6px;
 }
+
 @media (max-width: 768px) {
   .stat-row {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .info-grid {
+    grid-template-columns: 1fr;
+    gap: 6px 0;
+  }
+  .info-label {
+    font-size: 11px;
+  }
+  .control-row {
+    gap: 6px;
   }
 }
 </style>
