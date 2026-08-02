@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: 'ac2dfd71-0fb0-4241-824e-a702739e0b33'
-  PropagateID: 'ac2dfd71-0fb0-4241-824e-a702739e0b33'
-  ReservedCode1: '5bfbae09-53e8-4c62-99c9-d78527a3756a'
-  ReservedCode2: '5bfbae09-53e8-4c62-99c9-d78527a3756a'
+  ProduceID: 'ebbb3933-508e-4f58-b54d-744a9639aac9'
+  PropagateID: 'ebbb3933-508e-4f58-b54d-744a9639aac9'
+  ReservedCode1: '95b79fc2-3c8e-4941-aa9d-d7a946636bda'
+  ReservedCode2: '95b79fc2-3c8e-4941-aa9d-d7a946636bda'
 ---
 
 # BoxPanel — 多内核代理管理面板
