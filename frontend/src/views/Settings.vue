@@ -109,12 +109,12 @@
             <span v-else class="clash-no">No</span>
           </template>
         </el-table-column>
-        <el-table-column label="路径" show-overflow-tooltip>
+        <el-table-column label="路径" width="" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">
             <span class="muted path-text">{{ row.path }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="" width="160" align="right">
+        <el-table-column label="" width="180" align="right">
           <template #default="{ row }">
             <div class="row-actions">
               <el-button v-if="row.id !== activeCore?.id" size="small" type="primary" text @click="onActivateCore(row)">使用</el-button>
@@ -551,11 +551,15 @@ function kindTagType(kind: string) {
   font-size: 11px;
   opacity: 0.6;
 }
+.core-table :deep(.el-table__body-wrapper) {
+  overflow-x: auto;
+}
 .row-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   justify-content: flex-end;
+  white-space: nowrap;
 }
 .active-tag {
   font-size: 11px !important;
