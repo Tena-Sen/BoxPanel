@@ -54,70 +54,80 @@
     </el-row>
 
     <!-- 内核管理 -->
-    <div class="card settings-section" style="margin-top:16px;">
-      <div class="section-header" style="margin-bottom:16px;">
-        <span class="section-icon" style="background:var(--purple-soft);color:var(--purple);">⬢</span>
-        <span class="section-title">内核管理</span>
-        <el-tag v-if="activeCore" size="small" type="success" class="active-core-tag">当前：{{ kindLabel(activeCore.kind) }} {{ activeCore?.label }} ({{ activeCore?.version }})</el-tag>
-        <div class="spacer"></div>
-        <el-button size="small" type="primary" plain @click="onAutoMatch" :loading="autoMatchLoading">⬡ 自动匹配</el-button>
-        <el-dropdown size="small" @command="onDownloadCoreKind">
-          <el-button size="small" plain>
-            ⬇ 从 GitHub 下载 ▾
+    <div class="card settings-section core-manager" style="margin-top:16px;">
+      <div class="core-header">
+        <div class="core-header-left">
+          <span class="section-icon" style="background:var(--purple-soft);color:var(--purple);">⬢</span>
+          <div>
+            <div class="section-title">内核管理</div>
+            <div v-if="activeCore" class="active-core-hint">
+              当前激活: {{ kindLabel(activeCore.kind) }} {{ activeCore?.label }}
+            </div>
+          </div>
+        </div>
+        <div class="core-header-actions">
+          <el-button size="small" type="primary" plain @click="onAutoMatch" :loading="autoMatchLoading">
+            <span style="margin-right:4px;">⬡</span> 自动匹配
           </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="singbox">sing-box (全协议)</el-dropdown-item>
-              <el-dropdown-item command="xray">Xray (vless/vmess/trojan/ss)</el-dropdown-item>
-              <el-dropdown-item command="mihomo">mihomo (Clash.Meta)</el-dropdown-item>
-              <el-dropdown-item command="hysteria2">Hysteria2 (QUIC 加速)</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-button size="small" plain @click="showAddCore = true">+ 手动添加</el-button>
+          <el-dropdown size="small" @command="onDownloadCoreKind">
+            <el-button size="small" plain>⬇ 下载 ▾</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="singbox">sing-box (全协议)</el-dropdown-item>
+                <el-dropdown-item command="xray">Xray (vless/vmess/trojan/ss)</el-dropdown-item>
+                <el-dropdown-item command="mihomo">mihomo (Clash.Meta)</el-dropdown-item>
+                <el-dropdown-item command="hysteria2">Hysteria2 (QUIC)</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button size="small" plain @click="showAddCore = true">+ 手动添加</el-button>
+        </div>
       </div>
       <div class="table-wrap">
-      <el-table :data="cores" stripe>
-        <el-table-column label="类型" width="110">
+      <el-table :data="cores" stripe class="core-table">
+        <el-table-column label="类型" width="100">
           <template #default="{ row }">
-            <el-tag :type="kindTagType(row.kind)" size="small">{{ kindLabel(row.kind) }}</el-tag>
+            <el-tag :type="kindTagType(row.kind)" size="small" effect="plain">{{ kindLabel(row.kind) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="label" label="名称" width="160" />
-        <el-table-column prop="version" label="版本" width="120" />
-        <el-table-column label="支持协议" min-width="180">
+        <el-table-column prop="label" label="名称" width="140" />
+        <el-table-column prop="version" label="版本" width="100" />
+        <el-table-column label="协议" min-width="160">
           <template #default="{ row }">
-            <template v-if="coreInfoByKind(row.kind)">
-              <el-tag v-for="p in coreInfoByKind(row.kind)!.supported_protocols.slice(0, 4)" :key="p" size="small" type="info" style="margin:1px;">{{ p }}</el-tag>
-              <span v-if="coreInfoByKind(row.kind)!.supported_protocols.length > 4" class="muted" style="font-size:11px;"> +{{ coreInfoByKind(row.kind)!.supported_protocols.length - 4 }}</span>
-            </template>
-            <span v-else class="muted">-</span>
+            <div class="proto-list">
+              <template v-if="coreInfoByKind(row.kind)">
+                <span v-for="p in coreInfoByKind(row.kind)!.supported_protocols.slice(0, 4)" :key="p" class="proto-chip">{{ p }}</span>
+                <span v-if="coreInfoByKind(row.kind)!.supported_protocols.length > 4" class="proto-more">+{{ coreInfoByKind(row.kind)!.supported_protocols.length - 4 }}</span>
+              </template>
+              <span v-else class="muted">-</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="Clash API" width="90" align="center">
+        <el-table-column label="Clash API" width="80" align="center">
           <template #default="{ row }">
-            <span v-if="coreInfoByKind(row.kind)?.has_clash_api" style="color:var(--green);">Yes</span>
-            <span v-else class="muted">No</span>
+            <span v-if="coreInfoByKind(row.kind)?.has_clash_api" class="clash-yes">Yes</span>
+            <span v-else class="clash-no">No</span>
           </template>
         </el-table-column>
         <el-table-column label="路径" show-overflow-tooltip>
           <template #default="{ row }">
-            <span class="muted" style="font-family:monospace;font-size:11px;">{{ row.path }}</span>
+            <span class="muted path-text">{{ row.path }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" align="right">
+        <el-table-column label="" width="160" align="right">
           <template #default="{ row }">
-            <el-button v-if="row.id !== activeCore?.id" size="small" type="primary" @click="onActivateCore(row)">使用</el-button>
-            <el-tag v-else size="small" type="success">正在使用</el-tag>
-            <el-button size="small" @click="onTestCore(row)">探测版本</el-button>
-            <el-button v-if="!row.default" size="small" type="danger" @click="onDeleteCore(row)">删除</el-button>
+            <div class="row-actions">
+              <el-button v-if="row.id !== activeCore?.id" size="small" type="primary" text @click="onActivateCore(row)">使用</el-button>
+              <el-tag v-else size="small" type="success" effect="plain" class="active-tag">当前</el-tag>
+              <el-button size="small" text @click="onTestCore(row)">探测</el-button>
+              <el-button v-if="!row.default" size="small" type="danger" text @click="onDeleteCore(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
       </div>
-      <div class="muted" style="font-size:11px;margin-top:8px;">
-        支持多内核引擎：sing-box（全协议）/ Xray（vless/vmess/trojan/ss）/ mihomo（ss/vmess/trojan/hy2/tuic）/ Hysteria2（hy2 专用加速）。
-        启动核心时使用「当前」内核；configgen 会按内核类型和版本生成对应的配置格式。
+      <div class="core-footer">
+        支持 sing-box（全协议）/ Xray / mihomo / Hysteria2 多内核引擎。启动时使用「当前」内核，configgen 按类型生成对应配置。
       </div>
     </div>
 
@@ -487,6 +497,76 @@ function kindTagType(kind: string) {
 .active-core-tag {
   margin-left: 8px;
 }
+
+/* ---- Core Manager ---- */
+.core-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+.core-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.core-header-left .section-title {
+  font-size: 15px;
+}
+.active-core-hint {
+  font-size: 12px;
+  color: var(--green);
+  margin-top: 2px;
+}
+.core-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.proto-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.proto-chip {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--bg-mute);
+  color: var(--text-mute);
+  white-space: nowrap;
+}
+.proto-more {
+  font-size: 11px;
+  color: var(--text-mute);
+  margin-left: 2px;
+}
+.clash-yes { color: var(--green); font-weight: 500; font-size: 13px; }
+.clash-no { color: var(--text-mute); font-size: 13px; }
+.path-text {
+  font-family: 'Consolas', 'Monaco', ui-monospace, monospace;
+  font-size: 11px;
+  opacity: 0.6;
+}
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-content: flex-end;
+}
+.active-tag {
+  font-size: 11px !important;
+}
+.core-footer {
+  font-size: 11px;
+  color: var(--text-mute);
+  margin-top: 10px;
+  line-height: 1.6;
+  opacity: 0.7;
+}
 .settings-form :deep(.el-form-item) {
   margin-bottom: 16px;
 }
@@ -566,6 +646,8 @@ function kindTagType(kind: string) {
   :deep(.el-form-item__label) { text-align: left; }
   .section-header { flex-wrap: wrap; }
   .about-card { flex-wrap: wrap; }
+  .core-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .core-header-actions { flex-wrap: wrap; }
   .settings-form :deep(.el-form-item) {
     flex-direction: column;
   }
