@@ -111,36 +111,35 @@ func getIcon() []byte {
 	// Background: transparent
 	draw.Draw(m, m.Bounds(), image.Transparent, image.Point{}, draw.Src)
 
-	// Accent blue rounded square
+	// Solid blue rounded square
 	accent := color.RGBA{0x89, 0xb4, 0xfa, 0xff}
+	r := 6 // corner radius
 	pad := 2
 	for y := pad; y < sz-pad; y++ {
 		for x := pad; x < sz-pad; x++ {
-			// Simple rounded corners
 			dx, dy := 0, 0
-			if x < pad+4 {
-				dx = pad + 4 - x
-			} else if x > sz-pad-5 {
-				dx = x - (sz - pad - 5)
+			if x < pad+r {
+				dx = pad + r - x
+			} else if x > sz-pad-r-1 {
+				dx = x - (sz - pad - r - 1)
 			}
-			if y < pad+4 {
-				dy = pad + 4 - y
-			} else if y > sz-pad-5 {
-				dy = y - (sz - pad - 5)
+			if y < pad+r {
+				dy = pad + r - y
+			} else if y > sz-pad-r-1 {
+				dy = y - (sz - pad - r - 1)
 			}
-			if dx*dx+dy*dy <= 4*4 {
-				m.Set(x, y, accent)
-			} else if dx == 0 && dy == 0 {
+			// Inside rounded rect: fill; on/inside corner circle: fill
+			if dx*dx+dy*dy <= r*r || dx == 0 || dy == 0 {
 				m.Set(x, y, accent)
 			}
 		}
 	}
 
-	// Draw "BP" text in dark color
+	// Draw "BP" text in white
 	face := basicfont.Face7x13
 	d := font.Drawer{
 		Dst:  m,
-		Src:  &image.Uniform{color.RGBA{0x1e, 0x1e, 0x2e, 0xff}},
+		Src:  &image.Uniform{color.RGBA{0xff, 0xff, 0xff, 0xff}},
 		Face: face,
 		Dot:  fixed.Point26_6{X: fixed.I(8), Y: fixed.I(21)},
 	}
